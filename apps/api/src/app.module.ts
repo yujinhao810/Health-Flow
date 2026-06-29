@@ -1,0 +1,33 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { ChatModule } from './chat/chat.module';
+import { envSchema } from './config/env.schema';
+import { HealthRecordsModule } from './health-records/health-records.module';
+import { IntegrativeDiagnosisModule } from './integrative-diagnosis/integrative-diagnosis.module';
+import { KnowledgeModule } from './knowledge/knowledge.module';
+import { LlmModule } from './llm/llm.module';
+import { PrismaModule } from './prisma/prisma.module';
+import { SafetyModule } from './safety/safety.module';
+import { SettingsModule } from './settings/settings.module';
+import { SnapshotsModule } from './snapshots/snapshots.module';
+import { UploadsModule } from './uploads/uploads.module';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      validate: (env) => envSchema.parse(env),
+    }),
+    PrismaModule,
+    LlmModule,
+    SafetyModule,
+    SettingsModule,
+    HealthRecordsModule,
+    SnapshotsModule,
+    KnowledgeModule,
+    UploadsModule,
+    ChatModule,
+    IntegrativeDiagnosisModule,
+  ],
+})
+export class AppModule {}

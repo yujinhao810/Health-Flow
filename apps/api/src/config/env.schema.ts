@@ -1,0 +1,51 @@
+import { LLM_PROVIDER_IDS } from '@health/shared';
+import { z } from 'zod';
+
+export const envSchema = z.object({
+  API_PORT: z.coerce.number().default(3001),
+  DATABASE_URL: z.string().min(1),
+  REDIS_URL: z.string().default('redis://localhost:6379'),
+  CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  ENCRYPTION_KEY: z.string().min(16).optional(),
+  LLM_PROVIDER: z.enum(LLM_PROVIDER_IDS).default('mock'),
+  LLM_MODEL: z.string().optional(),
+  LLM_BASE_URL: z.string().optional(),
+  ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_BASE_URL: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_BASE_URL: z.string().optional(),
+  GOOGLE_API_KEY: z.string().optional(),
+  GOOGLE_BASE_URL: z.string().optional(),
+  MISTRAL_API_KEY: z.string().optional(),
+  MISTRAL_BASE_URL: z.string().optional(),
+  COHERE_API_KEY: z.string().optional(),
+  COHERE_BASE_URL: z.string().optional(),
+  GROQ_API_KEY: z.string().optional(),
+  GROQ_BASE_URL: z.string().optional(),
+  XAI_API_KEY: z.string().optional(),
+  XAI_BASE_URL: z.string().optional(),
+  OPENROUTER_API_KEY: z.string().optional(),
+  OPENROUTER_BASE_URL: z.string().optional(),
+  OLLAMA_BASE_URL: z.string().optional(),
+  DEEPSEEK_API_KEY: z.string().optional(),
+  DEEPSEEK_BASE_URL: z.string().optional(),
+  MOONSHOT_API_KEY: z.string().optional(),
+  MOONSHOT_BASE_URL: z.string().optional(),
+  QWEN_API_KEY: z.string().optional(),
+  QWEN_BASE_URL: z.string().optional(),
+  ZHIPU_API_KEY: z.string().optional(),
+  ZHIPU_BASE_URL: z.string().optional(),
+  BAIDU_API_KEY: z.string().optional(),
+  BAIDU_BASE_URL: z.string().optional(),
+  TENCENT_API_KEY: z.string().optional(),
+  TENCENT_BASE_URL: z.string().optional(),
+  VOLCENGINE_API_KEY: z.string().optional(),
+  VOLCENGINE_BASE_URL: z.string().optional(),
+  UPLOAD_DIR: z.string().optional(),
+  MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
+  ALLOWED_UPLOAD_MIME_TYPES: z
+    .string()
+    .default('image/png,image/jpeg,image/webp,text/plain,text/markdown,application/json,text/csv'),
+});
+
+export type Env = z.infer<typeof envSchema>;

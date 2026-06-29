@@ -1,0 +1,233 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum HealthRecordType {
+  sleep
+  exercise
+  mood
+  medical
+}
+
+enum ChatRole {
+  user
+  assistant
+  system
+}
+
+enum SnapshotPeriod {
+  daily
+  weekly
+  monthly
+}
+
+enum DiagnosisStatus {
+  pending
+  completed
+  safety_blocked
+  failed
+}
+
+enum DiagnosisSafetyLevel {
+  emergency
+  urgent
+  clinician_recommended
+  supportive
+}
+
+enum UploadedFileStatus {
+  pending
+  ready
+  failed
+}
+
+enum UploadedFilePurpose {
+  chat_attachment
+  knowledge_source
+}
+
+enum KnowledgeDocumentStatus {
+  draft
+  published
+  archived
+}
+
+model User {
+  id                 String               @id @default(uuid())
+  email              String               @unique
+  displayName        String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  llmConfigs         UserLlmConfig[]
+  healthRecords      HealthRecord[]
+  healthSnapshots    HealthSnapshot[]
+  conversations      Conversation[]
+  diagnosisSessions  DiagnosisSession[]
+  uploadedFiles      UploadedFile[]
+}
+
+model UserLlmConfig {
+  id                 String   @id @default(uuid())
+  userId             String
+  provider           String
+  model              String
+  encryptedApiKey    String?
+  maskedApiKey       String?
+  baseUrl            String?
+  ragEnabled         Boolean  @default(true)
+  ragTopK            Int      @default(5)
+  enabled            Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, enabled])
+}
+
+model HealthRecord {
+  id                 String           @id @default(uuid())
+  userId             String
+  type               HealthRecordType
+  recordedAt         DateTime
+  note               String?
+  payload            Json
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, recordedAt])
+}
+
+model HealthSnapshot {
+  id                 String         @id @default(uuid())
+  userId             String
+  period             SnapshotPeriod
+  startedAt          DateTime
+  endedAt            DateTime
+  summary            String
+  signals            Json
+  recommendations    Json
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, period, startedAt])
+}
+
+model Conversation {
+  id                 String        @id @default(uuid())
+  userId             String
+  title              String?
+  summary            String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages           ChatMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model DiagnosisSession {
+  id                 String                @id @default(uuid())
+  userId             String
+  status             DiagnosisStatus       @default(pending)
+  safetyLevel        DiagnosisSafetyLevel?
+  input              Json
+  contextSnapshot    Json?
+  redFlagResult      Json?
+  westernOutput      Json?
+  tcmOutput          Json?
+  integratedOutput   Json?
+  generationStatus   Json?
+  provider           String?
+  model              String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, safetyLevel, createdAt])
+}
+
+model ChatMessage {
+  id                 String                  @id @default(uuid())
+  conversationId     String
+  role               ChatRole
+  content            String
+  metadata           Json?
+  createdAt          DateTime                @default(now())
+  conversation       Conversation            @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  attachments        ChatMessageAttachment[]
+
+  @@index([conversationId, createdAt])
+}
+
+model UploadedFile {
+  id                 String                  @id @default(uuid())
+  userId             String
+  purpose            UploadedFilePurpose
+  originalName       String
+  mimeType           String
+  sizeBytes          Int
+  storagePath        String
+  sha256             String
+  status             UploadedFileStatus      @default(pending)
+  extractedText      String?
+  metadata           Json?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  user               User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messageLinks       ChatMessageAttachment[]
+
+  @@index([userId, purpose, createdAt])
+  @@index([sha256])
+}
+
+model ChatMessageAttachment {
+  id                 String       @id @default(uuid())
+  messageId          String
+  uploadedFileId     String
+  createdAt          DateTime     @default(now())
+  message            ChatMessage  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  uploadedFile       UploadedFile @relation(fields: [uploadedFileId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, uploadedFileId])
+  @@index([uploadedFileId])
+}
+
+model KnowledgeDocument {
+  id                 String                  @id @default(uuid())
+  title              String                  @unique
+  source             String?
+  sourceUrl          String?
+  locale             String                  @default("zh-CN")
+  status             KnowledgeDocumentStatus @default(published)
+  tags               String[]
+  metadata           Json?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  chunks             KnowledgeChunk[]
+
+  @@index([status, updatedAt])
+}
+
+model KnowledgeChunk {
+  id                 String            @id @default(uuid())
+  documentId         String
+  ordinal            Int
+  title              String?
+  content            String
+  keywords           String[]
+  metadata           Json?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  document           KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, ordinal])
+  @@index([documentId])
+}

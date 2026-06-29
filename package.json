@@ -1,0 +1,25 @@
+{
+  "name": "health-assistant",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "dev": "corepack pnpm --parallel --filter api --filter web run dev",
+    "dev:api": "corepack pnpm --filter api dev",
+    "dev:web": "corepack pnpm --filter web dev",
+    "dev:worker": "corepack pnpm --filter api worker",
+    "build": "corepack pnpm --filter @health/shared --filter api --filter web run build",
+    "lint": "corepack pnpm --filter @health/shared --filter api --filter web run lint",
+    "test": "corepack pnpm --filter @health/shared --filter api --filter web run test",
+    "format": "prettier --write .",
+    "db:generate": "corepack pnpm --filter api prisma:generate",
+    "db:migrate": "corepack pnpm --filter api prisma:migrate",
+    "db:seed": "corepack pnpm --filter api prisma:seed",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "turbo": "^2.0.9"
+  }
+}
