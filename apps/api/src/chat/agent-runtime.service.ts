@@ -112,6 +112,7 @@ export class AgentRuntimeService {
       yield { type: 'agent_step', message: `正在执行 ${toolUses.length} 个健康工具...` };
 
       const toolResults: LlmContentBlock[] = [];
+      let hasToolError = false;
       for (const toolUse of toolUses) {
         const result = await this.tools.execute(toolUse.name, toolUse.input, {
           user: request.user,
@@ -127,6 +128,7 @@ export class AgentRuntimeService {
           ok: !result.isError,
           summary: result.summary,
         };
+        if (result.isError) hasToolError = true;
         if (result.plan) {
           yield { type: 'plan_generated', title: result.plan.title, timeframe: result.plan.timeframe };
         }
@@ -140,6 +142,9 @@ export class AgentRuntimeService {
       }
 
       messages.push({ role: 'user', content: toolResults });
+      if (hasToolError) {
+        yield { type: 'agent_step', message: '工具返回错误，Agent 将根据错误信息自我修正并重试。' };
+      }
     }
 
     const warning = '健康工具调用已达到本轮上限，我会基于已获得的信息先给出保守建议。';

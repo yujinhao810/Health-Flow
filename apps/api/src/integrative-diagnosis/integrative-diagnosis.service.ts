@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+﻿import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   diagnosisInputSchema,
   integratedDiagnosisResultJsonSchema,
@@ -16,6 +16,7 @@ import {
 } from '@health/shared';
 import { Prisma } from '@prisma/client';
 import type { AuthUser } from '../auth/auth.types';
+import { AgentRunService } from '../agent-runs/agent-run.service';
 import { LlmService } from '../llm/llm.provider';
 import { PrismaService } from '../prisma/prisma.service';
 import { DiagnosisContextService } from './diagnosis-context.service';
@@ -32,6 +33,8 @@ type StructuredGeneration<T> = {
   warning?: string;
 };
 
+type CoordinatorTrace = NonNullable<GenerationStatus['coordinator']>;
+
 @Injectable()
 export class IntegrativeDiagnosisService {
   constructor(
@@ -39,6 +42,7 @@ export class IntegrativeDiagnosisService {
     private readonly context: DiagnosisContextService,
     private readonly triage: RedFlagTriageService,
     private readonly llm: LlmService,
+    private readonly agentRuns: AgentRunService,
   ) {}
 
   async create(user: AuthUser, input: unknown) {
@@ -63,10 +67,31 @@ export class IntegrativeDiagnosisService {
       },
     });
 
+    const agentRun = await this.agentRuns.start({
+      user,
+      kind: 'integrative_diagnosis',
+      diagnosisSessionId: session.id,
+      requestInput: diagnosisInput,
+      memorySnapshot: contextSnapshot,
+      provider: config.provider,
+      model: config.model,
+    });
+    await this.agentRuns.addStep(agentRun.id, { type: 'red_flag_triage', title: '红旗安全门控', status: redFlagResult.mustSeekImmediateCare ? 'failed' : 'complete', data: redFlagResult });
+    await this.agentRuns.addStep(agentRun.id, { type: 'memory_loaded', title: '加载长期健康记忆', status: 'complete', data: contextSnapshot });
+
     try {
       if (redFlagResult.mustSeekImmediateCare) {
         const integratedOutput = buildEmergencyResult(redFlagResult);
-        const generationStatus = buildGenerationStatus('complete', 'complete', 'complete');
+        const generationStatus = buildGenerationStatus('complete', 'complete', 'complete', [], {
+          strategy: 'red-flag gate -> emergency safety override',
+          steps: [
+            buildCoordinatorStep('red_flag_triage', 'complete', '命中急症红旗，跳过多 Agent 生成。'),
+            buildCoordinatorStep('western_agent', 'skipped', '安全门控已阻断。'),
+            buildCoordinatorStep('tcm_agent', 'skipped', '安全门控已阻断。'),
+            buildCoordinatorStep('integrator', 'skipped', '直接输出急症安全建议。'),
+          ],
+          arbitration: ['红旗安全优先级高于任何调理或解释型建议。'],
+        });
         const updated = await this.prisma.diagnosisSession.update({
           where: { id: session.id },
           data: {
@@ -76,30 +101,53 @@ export class IntegrativeDiagnosisService {
             generationStatus: generationStatus as Prisma.InputJsonValue,
           },
         });
+        await this.agentRuns.addStep(agentRun.id, { type: 'safety_override', title: '急症安全覆盖', status: 'complete', data: integratedOutput });
+        await this.agentRuns.complete(agentRun.id);
         return toDiagnosisSession(updated);
       }
 
       const basePayload = { input: diagnosisInput, contextSnapshot, redFlagResult };
+      const westernStartedAt = new Date();
+      await this.agentRuns.addStep(agentRun.id, { type: 'parallel_agents_started', title: '并行启动西医/中医 Agent', status: 'running' });
       const [westernGeneration, tcmGeneration] = await Promise.all([
         this.runWestern(config, basePayload),
         this.runTcm(config, basePayload),
       ]);
+      await this.agentRuns.addStep(agentRun.id, { type: 'western_agent', title: '西医 Agent', status: westernGeneration.status, data: { warning: westernGeneration.warning, output: westernGeneration.value } });
+      await this.agentRuns.addStep(agentRun.id, { type: 'tcm_agent', title: '中医 Agent', status: tcmGeneration.status, data: { warning: tcmGeneration.warning, output: tcmGeneration.value } });
+      const parallelEndedAt = new Date();
       const partialGenerationStatus = buildGenerationStatus(westernGeneration.status, tcmGeneration.status, 'complete', [
         westernGeneration.warning,
         tcmGeneration.warning,
       ]);
 
+      const integratorStartedAt = new Date();
+      await this.agentRuns.addStep(agentRun.id, { type: 'integrator_started', title: 'Integrator 仲裁', status: 'running' });
       const integratedGeneration = await this.runIntegrator(config, {
         ...basePayload,
         generationStatus: partialGenerationStatus,
         westernOutput: westernGeneration.value,
         tcmOutput: tcmGeneration.value,
       });
+      const integratorEndedAt = new Date();
+      await this.agentRuns.addStep(agentRun.id, { type: 'integrator', title: 'Integrator 仲裁结果', status: integratedGeneration.status, data: { warning: integratedGeneration.warning, output: integratedGeneration.value } });
+      const coordinator = buildCoordinatorTrace({
+        includeRecentHealthContext: diagnosisInput.includeRecentHealthContext,
+        contextSnapshot,
+        redFlagResult,
+        westernGeneration,
+        tcmGeneration,
+        integratedGeneration,
+        westernStartedAt,
+        parallelEndedAt,
+        integratorStartedAt,
+        integratorEndedAt,
+      });
       const generationStatus = buildGenerationStatus(westernGeneration.status, tcmGeneration.status, integratedGeneration.status, [
         westernGeneration.warning,
         tcmGeneration.warning,
         integratedGeneration.warning,
-      ]);
+      ], coordinator);
       const finalOutput = enforceFinalSafety(integratedGeneration.value ?? buildConservativeIntegrated(), redFlagResult);
 
       const updated = await this.prisma.diagnosisSession.update({
@@ -113,8 +161,11 @@ export class IntegrativeDiagnosisService {
           generationStatus: generationStatus as Prisma.InputJsonValue,
         },
       });
+      await this.agentRuns.addStep(agentRun.id, { type: 'safety_arbitration', title: '最终安全裁决', status: 'complete', data: { safetyLevel: finalOutput.safetyLevel } });
+      await this.agentRuns.complete(agentRun.id);
       return toDiagnosisSession(updated);
     } catch (error) {
+      await this.agentRuns.fail(agentRun.id, error);
       await this.prisma.diagnosisSession.update({ where: { id: session.id }, data: { status: 'failed' } });
       throw error;
     }
@@ -362,11 +413,72 @@ function buildGenerationStatus(
   tcm: GenerationStatus['tcm'],
   integrated: GenerationStatus['integrated'],
   warnings: Array<string | undefined> = [],
+  coordinator?: CoordinatorTrace,
 ): GenerationStatus {
   const cleanWarnings = warnings.filter((item): item is string => Boolean(item?.trim()));
   const degraded = western === 'fallback' || tcm === 'fallback' || integrated === 'fallback';
   const overall: GenerationStatus['overall'] = integrated === 'fallback' ? 'fallback' : degraded ? 'partial' : 'complete';
-  return { overall, western, tcm, integrated, degraded, warnings: cleanWarnings };
+  return { overall, western, tcm, integrated, degraded, warnings: cleanWarnings, coordinator };
+}
+
+function buildCoordinatorTrace(input: {
+  includeRecentHealthContext: boolean | undefined;
+  contextSnapshot: unknown;
+  redFlagResult: RedFlagTriageResult;
+  westernGeneration: StructuredGeneration<WesternAssessment>;
+  tcmGeneration: StructuredGeneration<TcmAssessment>;
+  integratedGeneration: StructuredGeneration<IntegratedDiagnosisResult>;
+  westernStartedAt: Date;
+  parallelEndedAt: Date;
+  integratorStartedAt: Date;
+  integratorEndedAt: Date;
+}): CoordinatorTrace {
+  const hasMemory = Boolean(
+    input.contextSnapshot &&
+      typeof input.contextSnapshot === 'object' &&
+      (input.contextSnapshot as Record<string, unknown>).longTermMemory,
+  );
+
+  return {
+    strategy: 'red-flag gate -> parallel western/tcm agents -> integrator arbitration -> final safety enforcement',
+    steps: [
+      buildCoordinatorStep('red_flag_triage', 'complete', input.redFlagResult.findings.length ? `发现 ${input.redFlagResult.findings.length} 个红旗线索。` : '未发现需要立即急救的红旗线索。'),
+      buildCoordinatorStep(
+        'long_term_memory_context',
+        input.includeRecentHealthContext ? 'complete' : 'skipped',
+        input.includeRecentHealthContext ? (hasMemory ? '已注入长期健康基线和相关历史记录。' : '已尝试注入长期记忆，但历史记录不足。') : '用户未选择包含近期健康上下文。',
+      ),
+      buildCoordinatorStep('western_agent', input.westernGeneration.status, agentStatusNote('西医 Agent', input.westernGeneration), input.westernStartedAt, input.parallelEndedAt),
+      buildCoordinatorStep('tcm_agent', input.tcmGeneration.status, agentStatusNote('中医 Agent', input.tcmGeneration), input.westernStartedAt, input.parallelEndedAt),
+      buildCoordinatorStep('integrator', input.integratedGeneration.status, agentStatusNote('Integrator', input.integratedGeneration), input.integratorStartedAt, input.integratorEndedAt),
+      buildCoordinatorStep('safety_arbitration', 'complete', '最终输出再次经过红旗安全约束和保守建议裁决。'),
+    ],
+    arbitration: [
+      '西医 Agent 负责红旗、可能方向、检查边界；中医 Agent 负责体质/证候倾向和低风险调养边界。',
+      'Integrator 汇总两侧输出，冲突时按安全优先、证据优先、保守建议优先处理。',
+      '任何红旗或不确定性都会提升线下就医/复查建议优先级。',
+    ],
+  };
+}
+
+function buildCoordinatorStep(
+  name: string,
+  status: CoordinatorTrace['steps'][number]['status'],
+  note?: string,
+  startedAt?: Date,
+  endedAt?: Date,
+): CoordinatorTrace['steps'][number] {
+  return {
+    name,
+    status,
+    startedAt: startedAt?.toISOString(),
+    endedAt: endedAt?.toISOString(),
+    note,
+  };
+}
+
+function agentStatusNote(name: string, generation: StructuredGeneration<unknown>) {
+  return generation.status === 'complete' ? `${name} 已完成结构化输出。` : generation.warning ?? `${name} 使用保守 fallback。`;
 }
 
 function buildEmptyWestern(): WesternAssessment {
@@ -436,3 +548,4 @@ function toDiagnosisSession(session: {
     updatedAt: session.updatedAt.toISOString(),
   };
 }
+

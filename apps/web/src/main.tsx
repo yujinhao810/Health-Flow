@@ -4,6 +4,7 @@ import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from 'react-router-dom';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { AuthProvider } from './hooks/useAuth';
 import { router } from './router';
 import './styles.css';
@@ -68,9 +69,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       }}
     >
       <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <RouterProvider router={router} />
-        </AuthProvider>
+        <AppErrorBoundary>
+          <AuthProvider>
+            <RouterProvider router={router} />
+          </AuthProvider>
+        </AppErrorBoundary>
       </QueryClientProvider>
     </ConfigProvider>
   </React.StrictMode>,

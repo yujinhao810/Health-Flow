@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AgentRunsModule } from './agent-runs/agent-runs.module';
 import { AuthModule } from './auth/auth.module';
 import { ChatModule } from './chat/chat.module';
 import { envSchema } from './config/env.schema';
 import { HealthRecordsModule } from './health-records/health-records.module';
 import { IntegrativeDiagnosisModule } from './integrative-diagnosis/integrative-diagnosis.module';
+import { InsightsModule } from './insights/insights.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
 import { LlmModule } from './llm/llm.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -20,6 +22,7 @@ import { UploadsModule } from './uploads/uploads.module';
       validate: (env) => envSchema.parse(env),
     }),
     PrismaModule,
+    AgentRunsModule,
     AuthModule,
     LlmModule,
     SafetyModule,
@@ -30,6 +33,8 @@ import { UploadsModule } from './uploads/uploads.module';
     UploadsModule,
     ChatModule,
     IntegrativeDiagnosisModule,
+    InsightsModule,
   ],
 })
 export class AppModule {}
+

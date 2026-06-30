@@ -35,7 +35,7 @@ export function RecordTimeline() {
   }
 
   return (
-    <Card title="最近记录" extra={<span className="soft-card-extra">最近 100 条</span>}>
+    <Card title="最近记录" extra={<span className="soft-card-extra">最近 200 条</span>}>
       {data.length === 0 ? (
         <Empty description="暂无记录，先写下一条温柔的健康观察吧" />
       ) : (

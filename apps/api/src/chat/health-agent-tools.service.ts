@@ -159,7 +159,16 @@ export class HealthAgentToolsService {
       }
     } catch (error) {
       const message = this.redaction.redact(error instanceof Error ? error.message : '工具执行失败');
-      return { isError: true, content: JSON.stringify({ ok: false, error: message }), summary: `${this.getTitle(name)}失败` };
+      return {
+        isError: true,
+        content: JSON.stringify({
+          ok: false,
+          error: message,
+          correctionInstruction: '请读取错误信息，修正工具名称或参数后最多重试一次；如果仍缺少必要信息，请转为向用户追问，不要编造。',
+          expectedTool: name,
+        }),
+        summary: `${this.getTitle(name)}失败，等待 Agent 自我修正`,
+      };
     }
   }
 

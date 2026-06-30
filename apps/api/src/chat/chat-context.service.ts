@@ -4,6 +4,7 @@ import type { AuthUser } from '../auth/auth.types';
 import { RagService } from '../knowledge/rag.service';
 import { HEALTH_ANALYSIS_SYSTEM } from '../llm/prompts/analysis.system';
 import { PSYCHOLOGICAL_ASSISTANT_SYSTEM } from '../llm/prompts/assistant.system';
+import { HealthMemoryService } from '../memory/health-memory.service';
 import { SettingsService } from '../settings/settings.service';
 import { SnapshotsService } from '../snapshots/snapshots.service';
 import { UploadsService } from '../uploads/uploads.service';
@@ -17,14 +18,16 @@ export class ChatContextService {
     private readonly chat: ChatService,
     private readonly rag: RagService,
     private readonly uploads: UploadsService,
+    private readonly memory: HealthMemoryService,
   ) {}
 
   async buildContext(user: AuthUser, threadId: string, options?: { userInput?: string; ragEnabled?: boolean; attachmentIds?: string[] }) {
-    const [config, snapshot, thread, files] = await Promise.all([
+    const [config, snapshot, thread, files, longTermMemory] = await Promise.all([
       this.settings.getLlmConfig(user),
       this.snapshots.latest(user),
       this.chat.getThread(user, threadId),
       this.uploads.getOwnedFiles(user, options?.attachmentIds ?? []),
+      this.memory.build(user, options?.userInput ?? ''),
     ]);
     const healthContext = snapshot
       ? [
@@ -47,12 +50,14 @@ export class ChatContextService {
         HEALTH_ANALYSIS_SYSTEM,
         TOOL_USE_SYSTEM,
         healthContext,
+        longTermMemory.text,
         knowledgeContext,
         attachmentContext,
       ]
         .filter(Boolean)
         .join('\n\n'),
       snapshot,
+      longTermMemory: longTermMemory.memory,
       thread,
       ragEnabled: effectiveRagEnabled,
       citations,
@@ -92,9 +97,10 @@ function buildKnowledgeContext(citations: RagCitation[]) {
 const TOOL_USE_SYSTEM = `
 工具使用规则：
 - 当用户询问真实健康记录、趋势、快照或要求制定计划时，优先调用健康工具，不要只凭聊天记忆猜测。
+- 回答健康问题时要结合“长期健康记忆”里的个人基线；如果当前状态偏离基线，要指出偏离点。
 - 只有用户明确要求“记录、保存、添加到健康记录、帮我记下”等写入意图时，才可以调用健康记录写入工具。
 - 不要声称已经保存记录，除非 health_record_create 工具返回成功。
 - 生成计划前优先读取最新健康快照，必要时查询近期健康记录。
-- 工具失败时如实说明，并给出保守、低风险的下一步建议。
+- 工具失败时先阅读 tool_result 中的 error/correctionInstruction，修正参数后最多重试一次；仍失败再如实说明并追问缺失信息。
 - 所有建议都必须保持非诊断、低压力、可执行；出现急症或安全风险时建议立即联系当地急救或线下专业机构。
 `;

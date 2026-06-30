@@ -22,14 +22,10 @@ export async function createWebServer(port = Number(process.env.WEB_PORT || 5173
   const server = await createServer({
     ...baseConfig,
     root: webRoot,
-    optimizeDeps: {
-      noDiscovery: true,
-      include: [],
-    },
     server: {
       host: process.env.WEB_HOST || '127.0.0.1',
       port,
-      strictPort: false,
+      strictPort: process.env.WEB_STRICT_PORT === 'true',
       fs: {
         allow: [webRoot, sharedPackageRoot],
       },

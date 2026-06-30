@@ -89,6 +89,8 @@ export function DiagnosisResult({ session }: { session?: DiagnosisSession | null
             </Col>
           </Row>
 
+          <CoordinatorTraceCard generationStatus={generationStatus} />
+
           <Alert className="diagnosis-disclaimer" type="info" showIcon message="安全声明" description={result.disclaimer} />
         </>
       ) : (
@@ -181,6 +183,35 @@ function IntegratedAdviceCard({ result, integratedStatus }: { result: Integrated
         <InfoList title="冲突如何处理" items={filterFallbackItems(result.conflictResolution)} />
         <InfoList title="建议补充的信息" items={filterFallbackItems(result.followUpQuestions)} />
       </Space>
+    </Card>
+  );
+}
+
+function CoordinatorTraceCard({ generationStatus }: { generationStatus: GenerationStatus }) {
+  const coordinator = generationStatus.coordinator;
+  if (!coordinator) return null;
+
+  return (
+    <Card className="diagnosis-coordinator-card" bordered={false}>
+      <div className="diagnosis-coordinator-head">
+        <Typography.Text className="diagnosis-eyebrow">Coordinator</Typography.Text>
+        <Typography.Title level={4}>Agent 编排轨迹</Typography.Title>
+        <Typography.Paragraph type="secondary">{coordinator.strategy}</Typography.Paragraph>
+      </div>
+      <Row gutter={[12, 12]}>
+        {coordinator.steps.map((step) => (
+          <Col xs={24} md={12} xl={8} key={step.name}>
+            <div className="diagnosis-coordinator-step">
+              <Space size={8} wrap>
+                <Typography.Text strong>{formatStepName(step.name)}</Typography.Text>
+                <Tag color={stepStatusColor(step.status)}>{step.status}</Tag>
+              </Space>
+              {step.note ? <Typography.Paragraph>{step.note}</Typography.Paragraph> : null}
+            </div>
+          </Col>
+        ))}
+      </Row>
+      <InfoList title="仲裁规则" items={coordinator.arbitration} />
     </Card>
   );
 }
@@ -280,6 +311,21 @@ function priorityColor(priority: string) {
   if (priority === 'immediate') return 'red';
   if (priority === 'soon') return 'orange';
   return 'blue';
+}
+
+function stepStatusColor(status: string) {
+  if (status === 'complete') return 'green';
+  if (status === 'fallback') return 'orange';
+  if (status === 'running') return 'blue';
+  if (status === 'skipped') return 'default';
+  return 'purple';
+}
+
+function formatStepName(name: string) {
+  return name
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }
 
 const TCM_CATEGORY_LABELS: Record<string, string> = {

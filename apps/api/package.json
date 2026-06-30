@@ -4,7 +4,9 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
+    "predev": "node scripts/ensure-prisma-client.mjs",
     "dev": "nest start --watch",
+    "prebuild": "node scripts/ensure-prisma-client.mjs",
     "build": "nest build",
     "start": "node dist/main.js",
     "worker": "tsx src/jobs/worker.ts",

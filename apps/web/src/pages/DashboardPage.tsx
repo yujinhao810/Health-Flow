@@ -1,6 +1,9 @@
-import { Card, Col, Progress, Row, Space, Statistic, Tag, Typography } from 'antd';
-import type { HealthRecord } from '../api/health';
+import { Button, Card, Col, Empty, List, Progress, Row, Space, Spin, Statistic, Tag, Typography } from 'antd';
+import type { AgentRun } from '../api/agentRuns';
+import type { HealthInsight, HealthRecord } from '../api/health';
 import { SnapshotCard } from '../components/snapshots/SnapshotCard';
+import { useAgentRuns } from '../hooks/useAgentRuns';
+import { useHealthInsights } from '../hooks/useHealthInsights';
 import { useHealthRecords } from '../hooks/useHealthRecords';
 
 export function DashboardPage() {
@@ -15,15 +18,15 @@ export function DashboardPage() {
       <div className="page-intro">
         <Typography.Title level={2}>健康总览</Typography.Title>
         <Typography.Paragraph type="secondary">
-          从每日记录中看见身体与情绪的细微变化，用更平和的节奏照顾自己。
+          Agent 会持续读取你的长期健康基线、近期变化和对话执行轨迹，把值得关注的信号放在这里。
         </Typography.Paragraph>
       </div>
       <Row gutter={[18, 18]}>
         <Col xs={24} md={8}>
           <Card className="metric-card">
-            <Statistic title="今日心情" value={mood.latestScore ? `${mood.latestScore} / 10` : '待记录'} />
+            <Statistic title="今日心情" value={mood.latestScore !== undefined ? `${mood.latestScore} / 10` : '待记录'} />
             <div className="dashboard-metric-detail">
-              {mood.latestScore ? `今日平均 ${mood.averageScore ?? '-'} 分` : '今天还没有心情记录'}
+              {mood.latestScore !== undefined ? `今日平均 ${mood.averageScore ?? '-'} 分` : '今天还没有心情记录'}
             </div>
             <Space wrap size={[4, 4]}>
               {mood.tags.map((tag) => <Tag key={tag} color="purple">{tag}</Tag>)}
@@ -32,16 +35,16 @@ export function DashboardPage() {
         </Col>
         <Col xs={24} md={8}>
           <Card className="metric-card">
-            <Statistic title="睡眠趋势" value={sleep.averageHours ? sleep.averageHours : '暂无数据'} suffix={sleep.averageHours ? '小时' : undefined} />
+            <Statistic title="睡眠趋势" value={sleep.averageHours ?? '暂无数据'} suffix={sleep.averageHours !== undefined ? '小时' : undefined} />
             <div className="dashboard-metric-detail">
-              {sleep.latestHours ? `最近一次 ${sleep.latestHours} 小时${sleep.diffText ? ` · ${sleep.diffText}` : ''}` : '近 7 天暂无睡眠记录'}
+              {sleep.latestHours !== undefined ? `最近一次 ${sleep.latestHours} 小时${sleep.diffText ? ` · ${sleep.diffText}` : ''}` : '近 7 天暂无睡眠记录'}
             </div>
             <MiniMetricBars data={sleep.dailyHours} max={Math.max(8, ...sleep.dailyHours.map((item) => item.value))} />
           </Card>
         </Col>
         <Col xs={24} md={8}>
           <Card className="metric-card">
-            <Statistic title="运动频率" value={exercise.activeDays ? `${exercise.activeDays} / 7 天` : '暂无运动'} />
+            <Statistic title="运动频率" value={exercise.count ? `${exercise.activeDays} / 7 天` : '暂无运动'} />
             <div className="dashboard-metric-detail">
               {exercise.count ? `共 ${exercise.totalMinutes} 分钟 · ${exercise.count} 条记录` : '近 7 天还没有运动记录'}
             </div>
@@ -53,9 +56,110 @@ export function DashboardPage() {
             />
           </Card>
         </Col>
-        <Col span={24}><SnapshotCard /></Col>
+        <Col xs={24} xl={14}><HealthInsightsPanel /></Col>
+        <Col xs={24} xl={10}><AgentRunsPanel /></Col>
+        <Col span={24}>{records.isLoading ? <Spin /> : <SnapshotCard />}</Col>
       </Row>
     </>
+  );
+}
+
+function HealthInsightsPanel() {
+  const { insights, refresh, markRead, dismiss } = useHealthInsights();
+  const items = insights.data ?? [];
+
+  return (
+    <Card
+      className="agent-insights-card"
+      title="主动洞察"
+      extra={<Button size="small" onClick={() => refresh.mutate()} loading={refresh.isPending}>刷新</Button>}
+    >
+      {insights.isLoading ? (
+        <Spin />
+      ) : items.length === 0 ? (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无需要提醒的健康信号" />
+      ) : (
+        <List
+          className="agent-insight-list"
+          dataSource={items.slice(0, 5)}
+          renderItem={(item) => (
+            <List.Item
+              actions={[
+                item.status === 'new' ? <Button key="read" type="link" size="small" onClick={() => markRead.mutate(item.id)}>已读</Button> : null,
+                <Button key="dismiss" type="link" size="small" onClick={() => dismiss.mutate(item.id)}>忽略</Button>,
+              ].filter(Boolean)}
+            >
+              <InsightItem insight={item} />
+            </List.Item>
+          )}
+        />
+      )}
+    </Card>
+  );
+}
+
+function InsightItem({ insight }: { insight: HealthInsight }) {
+  return (
+    <List.Item.Meta
+      title={
+        <Space wrap size={8}>
+          <Typography.Text strong>{insight.title}</Typography.Text>
+          <Tag color={insightSeverityColor(insight.severity)}>{insightSeverityText(insight.severity)}</Tag>
+          {insight.status === 'new' ? <Tag color="blue">新</Tag> : null}
+        </Space>
+      }
+      description={
+        <Space direction="vertical" size={4} className="agent-insight-copy">
+          <Typography.Text>{insight.summary}</Typography.Text>
+          <Typography.Text type="secondary">{insight.recommendation}</Typography.Text>
+        </Space>
+      }
+    />
+  );
+}
+
+function AgentRunsPanel() {
+  const runs = useAgentRuns(6);
+  const items = runs.data ?? [];
+
+  return (
+    <Card className="agent-runs-card" title="最近 Agent 运行">
+      {runs.isLoading ? (
+        <Spin />
+      ) : items.length === 0 ? (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="对话或辅助分诊后会显示运行轨迹" />
+      ) : (
+        <List
+          className="agent-run-list"
+          dataSource={items}
+          renderItem={(run) => (
+            <List.Item>
+              <AgentRunItem run={run} />
+            </List.Item>
+          )}
+        />
+      )}
+    </Card>
+  );
+}
+
+function AgentRunItem({ run }: { run: AgentRun }) {
+  const steps = Array.isArray(run.steps) ? run.steps : [];
+  const latestStep = steps[steps.length - 1];
+  return (
+    <div className="agent-run-item">
+      <div className="agent-run-head">
+        <Space wrap size={8}>
+          <Typography.Text strong>{run.kind === 'chat' ? '健康对话' : '辅助分诊'}</Typography.Text>
+          <Tag color={runStatusColor(run.status)}>{runStatusText(run.status)}</Tag>
+        </Space>
+        <Typography.Text type="secondary">{formatTime(run.startedAt)}</Typography.Text>
+      </div>
+      <Typography.Text type="secondary" className="agent-run-detail">
+        {steps.length} 个步骤{latestStep?.title ? ` · 最近：${latestStep.title}` : ''}
+      </Typography.Text>
+      {run.error ? <Typography.Text type="danger" className="agent-run-detail">{run.error}</Typography.Text> : null}
+    </div>
   );
 }
 
@@ -169,4 +273,32 @@ function aggregateDailyValues(items: Array<{ date: string; value: number }>) {
 function average(values: number[]) {
   if (!values.length) return undefined;
   return Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1));
+}
+
+function insightSeverityColor(severity: string) {
+  if (severity === 'warning') return 'red';
+  if (severity === 'watch') return 'gold';
+  return 'cyan';
+}
+
+function insightSeverityText(severity: string) {
+  if (severity === 'warning') return '需关注';
+  if (severity === 'watch') return '观察';
+  return '提示';
+}
+
+function runStatusColor(status: string) {
+  if (status === 'completed') return 'green';
+  if (status === 'failed') return 'red';
+  return 'blue';
+}
+
+function runStatusText(status: string) {
+  if (status === 'completed') return '完成';
+  if (status === 'failed') return '失败';
+  return '运行中';
+}
+
+function formatTime(value: string) {
+  return new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }

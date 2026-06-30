@@ -1,10 +1,12 @@
 import { Spin, Typography } from 'antd';
+import type { CSSProperties } from 'react';
 import { useCallback, useLayoutEffect, useRef } from 'react';
 import { withAuthToken } from '../../api/client';
 import type { UiMessage } from '../../hooks/useChatStream';
 
 const bottomThreshold = 24;
-const sunflowerPetals = Array.from({ length: 16 });
+const sunflowerPetals = Array.from({ length: 24 });
+const orbitDots = Array.from({ length: 6 });
 
 export function MessageList({ messages, loading }: { messages: UiMessage[]; loading?: boolean }) {
   const windowRef = useRef<HTMLDivElement | null>(null);
@@ -35,27 +37,41 @@ export function MessageList({ messages, loading }: { messages: UiMessage[]; load
   if (!messages.length) {
     return (
       <div ref={windowRef} className="chat-window chat-window-centered" onScroll={updateStickiness}>
-        <div className="sunflower-empty" aria-label="会动的向日葵">
-          <div className="sunflower-sky" />
-          <div className="sunflower-bloom">
+        <div className="sunflower-empty" aria-label="温暖的向日葵空状态">
+          <div className="sunflower-aura" />
+          <div className="sunflower-orbit" aria-hidden="true">
+            {orbitDots.map((_, index) => <span key={index} />)}
+          </div>
+          <div className="sunflower-bloom" aria-hidden="true">
             <div className="sunflower-petals">
               {sunflowerPetals.map((_, index) => (
-                <span key={index} className="sunflower-petal" />
+                <span
+                  key={index}
+                  className="sunflower-petal"
+                  style={{ '--petal-index': index, '--petal-scale': 0.9 + (index % 3) * 0.05 } as CSSProperties}
+                />
               ))}
             </div>
-            <div className="sunflower-face">
-              <span className="sunflower-eye left" />
-              <span className="sunflower-eye right" />
-              <span className="sunflower-smile" />
+            <div className="sunflower-core">
+              <span className="sunflower-core-glass" />
+              <span className="sunflower-core-shine" />
             </div>
           </div>
-          <div className="sunflower-stem">
+          <div className="sunflower-stem" aria-hidden="true">
             <span className="sunflower-leaf left" />
             <span className="sunflower-leaf right" />
           </div>
-          <Typography.Text className="sunflower-empty-text">
-            可以从最近的压力、情绪或困扰开始聊起，我会像向日葵一样温暖地陪你梳理。
-          </Typography.Text>
+          <div className="sunflower-empty-copy">
+            <Typography.Title level={4}>先把心里的重量放下来</Typography.Title>
+            <Typography.Text>
+              可以从最近的压力、情绪或困扰开始聊起，我会陪你慢慢梳理出清晰的一步。
+            </Typography.Text>
+            <div className="sunflower-prompts" aria-hidden="true">
+              <span>压力</span>
+              <span>睡眠</span>
+              <span>情绪</span>
+            </div>
+          </div>
         </div>
       </div>
     );

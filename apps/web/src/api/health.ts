@@ -14,6 +14,20 @@ export type DeleteHealthRecordResult = {
   deleted: true;
 };
 
+export type HealthInsight = {
+  id: string;
+  type: string;
+  severity: 'info' | 'watch' | 'warning' | string;
+  title: string;
+  summary: string;
+  evidence: Record<string, unknown>;
+  recommendation: string;
+  status: 'new' | 'read' | 'dismissed' | string;
+  generatedAt: string;
+  readAt?: string | null;
+  dismissedAt?: string | null;
+};
+
 export function listHealthRecords(type?: HealthRecordType) {
   return api<HealthRecord[]>(`/health/records${type ? `?type=${type}` : ''}`);
 }
@@ -24,4 +38,20 @@ export function createHealthRecord(input: CreateHealthRecordInput) {
 
 export function deleteHealthRecord(id: string) {
   return api<DeleteHealthRecordResult>(`/health/records/${id}`, { method: 'DELETE' });
+}
+
+export function listHealthInsights() {
+  return api<HealthInsight[]>('/health/insights');
+}
+
+export function refreshHealthInsights() {
+  return api<HealthInsight[]>('/health/insights/refresh', { method: 'POST' });
+}
+
+export function markHealthInsightRead(id: string) {
+  return api<{ count: number }>(`/health/insights/${id}/read`, { method: 'POST' });
+}
+
+export function dismissHealthInsight(id: string) {
+  return api<{ count: number }>(`/health/insights/${id}`, { method: 'DELETE' });
 }

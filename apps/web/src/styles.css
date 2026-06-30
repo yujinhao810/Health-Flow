@@ -124,6 +124,23 @@ body::before {
   padding: 24px;
 }
 
+.app-error-screen {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 32px;
+}
+
+.app-error-stack {
+  overflow: auto;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #7f1d1d;
+  white-space: pre-wrap;
+}
+
 .app-content {
   box-sizing: border-box;
   width: 100%;
@@ -462,268 +479,272 @@ body::before {
 .sunflower-empty {
   position: relative;
   display: flex;
-  width: min(360px, 100%);
-  min-height: 280px;
+  width: min(620px, 100%);
+  min-height: 420px;
   align-items: center;
   flex-direction: column;
   justify-content: center;
-  padding: 26px 22px 22px;
+  isolation: isolate;
+  padding: 46px 28px 36px;
   overflow: hidden;
   text-align: center;
 }
 
-.sunflower-sky {
+.sunflower-empty::before,
+.sunflower-empty::after {
   position: absolute;
-  inset: 16px 28px auto;
-  height: 160px;
+  z-index: -2;
   border-radius: 999px;
-  background:
-    radial-gradient(circle at 26% 28%, rgba(254, 240, 138, 0.65), transparent 28px),
-    radial-gradient(circle at 72% 18%, rgba(191, 219, 254, 0.42), transparent 48px),
-    linear-gradient(180deg, rgba(224, 242, 254, 0.38), rgba(240, 253, 244, 0));
-  filter: blur(1px);
-  animation: sunflower-sky-breathe 4.8s ease-in-out infinite;
+  content: '';
+  pointer-events: none;
 }
+
+.sunflower-empty::before {
+  width: 430px;
+  height: 430px;
+  background: radial-gradient(circle, rgba(254, 240, 138, 0.2), rgba(191, 219, 254, 0.16) 42%, transparent 70%);
+  filter: blur(2px);
+  transform: translate(8px, -18px);
+}
+
+.sunflower-empty::after {
+  width: 520px;
+  height: 240px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(245, 243, 255, 0.18));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
+  transform: translateY(56px);
+}
+
+.sunflower-aura {
+  position: absolute;
+  z-index: -1;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(253, 224, 71, 0.34), transparent 42%),
+    radial-gradient(circle at 52% 54%, rgba(59, 130, 246, 0.16), transparent 68%);
+  filter: blur(18px);
+  opacity: 0.92;
+  transform: translateY(-54px);
+  animation: sunflower-aura 6s ease-in-out infinite;
+}
+
+.sunflower-orbit {
+  position: absolute;
+  z-index: -1;
+  width: 332px;
+  height: 332px;
+  border: 1px solid rgba(129, 140, 248, 0.14);
+  border-radius: 50%;
+  transform: translateY(-54px);
+  animation: sunflower-orbit 18s linear infinite;
+}
+
+.sunflower-orbit span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 18px rgba(109, 93, 252, 0.24);
+  transform: rotate(calc(var(--dot-index, 0) * 60deg)) translateX(166px);
+}
+
+.sunflower-orbit span:nth-child(1) { --dot-index: 0; opacity: 0.9; }
+.sunflower-orbit span:nth-child(2) { --dot-index: 1; opacity: 0.52; }
+.sunflower-orbit span:nth-child(3) { --dot-index: 2; opacity: 0.76; }
+.sunflower-orbit span:nth-child(4) { --dot-index: 3; opacity: 0.42; }
+.sunflower-orbit span:nth-child(5) { --dot-index: 4; opacity: 0.7; }
+.sunflower-orbit span:nth-child(6) { --dot-index: 5; opacity: 0.5; }
 
 .sunflower-bloom {
   position: relative;
   z-index: 1;
-  width: 150px;
-  height: 150px;
+  width: 184px;
+  height: 184px;
   margin-top: 8px;
-  transform-origin: 50% 96%;
-  animation: sunflower-sway 3.8s ease-in-out infinite;
+  transform-origin: 50% 86%;
+  animation: sunflower-float 5.8s ease-in-out infinite;
 }
 
 .sunflower-petals {
   position: absolute;
   inset: 0;
-  animation: sunflower-glow 3.4s ease-in-out infinite;
+  filter: drop-shadow(0 18px 28px rgba(250, 204, 21, 0.22));
 }
 
 .sunflower-petal {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 26px;
-  height: 50px;
-  border-radius: 999px 999px 12px 12px;
-  background: linear-gradient(180deg, #fde68a 0%, #facc15 58%, #f59e0b 100%);
-  box-shadow: 0 6px 14px rgba(245, 158, 11, 0.18);
-  transform: translate(-50%, -100%);
+  width: 24px;
+  height: 76px;
+  border-radius: 999px 999px 42px 42px;
+  background:
+    linear-gradient(180deg, rgba(255, 250, 205, 0.98) 0%, rgba(253, 224, 71, 0.96) 45%, rgba(245, 158, 11, 0.9) 100%);
+  box-shadow:
+    inset 0 1px 8px rgba(255, 255, 255, 0.58),
+    inset 0 -10px 14px rgba(217, 119, 6, 0.12),
+    0 10px 22px rgba(245, 158, 11, 0.12);
+  transform: translate(-50%, -100%) rotate(calc(var(--petal-index) * 15deg)) translateY(-48px) scaleY(var(--petal-scale));
   transform-origin: 50% 100%;
 }
 
-.sunflower-petal:nth-child(1) {
-  transform: translate(-50%, -100%) rotate(0deg) translateY(-46px);
+.sunflower-petal:nth-child(2n) {
+  width: 20px;
+  height: 68px;
+  opacity: 0.88;
+  background: linear-gradient(180deg, rgba(254, 249, 195, 0.9), rgba(250, 204, 21, 0.88) 54%, rgba(234, 179, 8, 0.84));
 }
 
-.sunflower-petal:nth-child(2) {
-  transform: translate(-50%, -100%) rotate(22.5deg) translateY(-46px);
-}
-
-.sunflower-petal:nth-child(3) {
-  transform: translate(-50%, -100%) rotate(45deg) translateY(-46px);
-}
-
-.sunflower-petal:nth-child(4) {
-  transform: translate(-50%, -100%) rotate(67.5deg) translateY(-46px);
-}
-
-.sunflower-petal:nth-child(5) {
-  transform: translate(-50%, -100%) rotate(90deg) translateY(-46px);
-}
-
-.sunflower-petal:nth-child(6) {
-  transform: translate(-50%, -100%) rotate(112.5deg) translateY(-46px);
-}
-
-.sunflower-petal:nth-child(7) {
-  transform: translate(-50%, -100%) rotate(135deg) translateY(-46px);
-}
-
-.sunflower-petal:nth-child(8) {
-  transform: translate(-50%, -100%) rotate(157.5deg) translateY(-46px);
-}
-
-.sunflower-petal:nth-child(9) {
-  transform: translate(-50%, -100%) rotate(180deg) translateY(-46px);
-}
-
-.sunflower-petal:nth-child(10) {
-  transform: translate(-50%, -100%) rotate(202.5deg) translateY(-46px);
-}
-
-.sunflower-petal:nth-child(11) {
-  transform: translate(-50%, -100%) rotate(225deg) translateY(-46px);
-}
-
-.sunflower-petal:nth-child(12) {
-  transform: translate(-50%, -100%) rotate(247.5deg) translateY(-46px);
-}
-
-.sunflower-petal:nth-child(13) {
-  transform: translate(-50%, -100%) rotate(270deg) translateY(-46px);
-}
-
-.sunflower-petal:nth-child(14) {
-  transform: translate(-50%, -100%) rotate(292.5deg) translateY(-46px);
-}
-
-.sunflower-petal:nth-child(15) {
-  transform: translate(-50%, -100%) rotate(315deg) translateY(-46px);
-}
-
-.sunflower-petal:nth-child(16) {
-  transform: translate(-50%, -100%) rotate(337.5deg) translateY(-46px);
-}
-
-.sunflower-face {
+.sunflower-core {
   position: absolute;
-  inset: 42px;
-  border: 5px solid rgba(146, 64, 14, 0.16);
+  inset: 50px;
+  display: grid;
+  place-items: center;
+  border: 8px solid rgba(255, 247, 237, 0.88);
   border-radius: 50%;
   background:
-    radial-gradient(circle at 34% 34%, rgba(255, 255, 255, 0.24), transparent 12px),
-    radial-gradient(circle, #92400e 0 44%, #78350f 100%);
-  box-shadow: inset 0 -8px 12px rgba(69, 26, 3, 0.18), 0 10px 22px rgba(146, 64, 14, 0.16);
+    radial-gradient(circle at 38% 32%, rgba(255, 255, 255, 0.38), transparent 13px),
+    radial-gradient(circle at 50% 54%, #a85516 0 42%, #7c2d12 74%, #431407 100%);
+  box-shadow:
+    inset 0 -12px 20px rgba(67, 20, 7, 0.24),
+    inset 0 12px 18px rgba(255, 237, 213, 0.16),
+    0 18px 36px rgba(120, 53, 15, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.52);
 }
 
-.sunflower-eye {
+.sunflower-core-glass {
+  position: absolute;
+  inset: 9px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.22), transparent 46%);
+}
+
+.sunflower-core-shine {
   position: absolute;
   top: 18px;
-  width: 6px;
-  height: 8px;
-  border-radius: 50%;
-  background: #fff7ed;
-  animation: sunflower-blink 5s ease-in-out infinite;
-}
-
-.sunflower-eye.left {
-  left: 17px;
-}
-
-.sunflower-eye.right {
-  right: 17px;
-}
-
-.sunflower-smile {
-  position: absolute;
-  left: 50%;
-  bottom: 15px;
-  width: 20px;
-  height: 10px;
-  border-bottom: 3px solid #fff7ed;
-  border-radius: 0 0 999px 999px;
-  transform: translateX(-50%);
+  left: 24px;
+  width: 14px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  filter: blur(0.5px);
+  transform: rotate(14deg);
 }
 
 .sunflower-stem {
   position: relative;
   z-index: 0;
-  width: 12px;
-  height: 84px;
-  margin-top: -6px;
+  width: 9px;
+  height: 96px;
+  margin-top: -12px;
   border-radius: 999px;
-  background: linear-gradient(180deg, #65a30d, #16a34a);
-  box-shadow: 0 10px 18px rgba(34, 197, 94, 0.14);
+  background: linear-gradient(180deg, rgba(101, 163, 13, 0.82), rgba(22, 163, 74, 0.92));
+  box-shadow: 0 16px 30px rgba(34, 197, 94, 0.18);
 }
 
 .sunflower-stem::before {
   position: absolute;
-  top: -8px;
-  left: 50%;
-  width: 12px;
-  height: 18px;
-  border-radius: 999px 999px 0 0;
-  background: #65a30d;
+  inset: 0 auto 0 2px;
+  width: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
   content: '';
-  transform: translateX(-50%);
 }
 
 .sunflower-leaf {
   position: absolute;
-  width: 48px;
-  height: 26px;
-  border-radius: 999px 6px 999px 6px;
-  background: linear-gradient(135deg, #86efac, #22c55e);
-  animation: sunflower-leaf-wave 3.8s ease-in-out infinite;
+  width: 58px;
+  height: 30px;
+  border-radius: 999px 10px 999px 10px;
+  background:
+    linear-gradient(135deg, rgba(187, 247, 208, 0.96), rgba(34, 197, 94, 0.8)),
+    radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.6), transparent 20px);
+  box-shadow: 0 10px 24px rgba(34, 197, 94, 0.14);
 }
 
 .sunflower-leaf.left {
-  top: 28px;
-  right: 6px;
+  top: 30px;
+  right: 4px;
   transform: rotate(-34deg);
   transform-origin: 100% 50%;
 }
 
 .sunflower-leaf.right {
-  top: 46px;
-  left: 6px;
-  transform: rotate(34deg);
+  top: 52px;
+  left: 4px;
+  transform: rotate(28deg);
   transform-origin: 0 50%;
-  animation-delay: 0.45s;
 }
 
-.sunflower-empty-text.ant-typography {
+.sunflower-empty-copy {
   position: relative;
   z-index: 1;
-  max-width: 520px;
-  margin-top: 18px;
-  color: #52547f !important;
+  display: flex;
+  max-width: 560px;
+  align-items: center;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.sunflower-empty-copy .ant-typography {
+  margin: 0;
+}
+
+.sunflower-empty-copy .ant-typography:not(h4) {
+  color: #5b5f8f !important;
   font-size: 16px;
-  line-height: 1.8;
+  line-height: 1.9;
 }
 
-@keyframes sunflower-sway {
+.sunflower-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.sunflower-prompts span {
+  padding: 5px 12px;
+  border: 1px solid rgba(129, 140, 248, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.66);
+  color: #6b6f98;
+  font-size: 12px;
+  box-shadow: 0 8px 18px rgba(80, 70, 180, 0.06);
+}
+
+@keyframes sunflower-float {
   0%, 100% {
-    transform: rotate(-3deg) translateY(0);
+    transform: translateY(0) rotate(-1.8deg);
   }
 
   50% {
-    transform: rotate(4deg) translateY(-4px);
+    transform: translateY(-8px) rotate(1.8deg);
   }
 }
 
-@keyframes sunflower-glow {
+@keyframes sunflower-aura {
   0%, 100% {
-    filter: drop-shadow(0 8px 16px rgba(250, 204, 21, 0.18));
-  }
-
-  50% {
-    filter: drop-shadow(0 12px 24px rgba(250, 204, 21, 0.32));
-  }
-}
-
-@keyframes sunflower-blink {
-  0%, 92%, 100% {
-    transform: scaleY(1);
-  }
-
-  95% {
-    transform: scaleY(0.12);
-  }
-}
-
-@keyframes sunflower-leaf-wave {
-  0%, 100% {
-    filter: brightness(1);
-  }
-
-  50% {
-    filter: brightness(1.08);
-  }
-}
-
-@keyframes sunflower-sky-breathe {
-  0%, 100% {
-    opacity: 0.7;
-    transform: scale(0.96);
+    opacity: 0.76;
+    transform: translateY(-54px) scale(0.96);
   }
 
   50% {
     opacity: 1;
-    transform: scale(1.04);
+    transform: translateY(-58px) scale(1.04);
+  }
+}
+
+@keyframes sunflower-orbit {
+  to {
+    transform: translateY(-54px) rotate(360deg);
   }
 }
 
@@ -1081,6 +1102,34 @@ body::before {
     rgba(255, 255, 255, 0.72) !important;
 }
 
+.diagnosis-coordinator-card.ant-card {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(56, 189, 248, 0.2), transparent 16rem),
+    rgba(255, 255, 255, 0.74) !important;
+}
+
+.diagnosis-coordinator-head .ant-typography {
+  margin-bottom: 6px;
+}
+
+.diagnosis-coordinator-step {
+  min-height: 112px;
+  padding: 12px;
+  border: 1px solid rgba(129, 140, 248, 0.12);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.diagnosis-coordinator-step .ant-typography {
+  margin-bottom: 0;
+}
+
+.diagnosis-coordinator-step .ant-space + .ant-typography {
+  margin-top: 8px;
+  color: #5f638e !important;
+}
+
 .diagnosis-advice-header {
   margin-bottom: 14px;
 }
@@ -1256,4 +1305,166 @@ body::before {
     min-width: 76px;
     padding-inline: 12px;
   }
+}
+
+.agent-insights-card .ant-list-item,
+.agent-runs-card .ant-list-item {
+  align-items: flex-start;
+  padding-inline: 0 !important;
+}
+
+.agent-insight-list .ant-list-item-meta-title {
+  margin-bottom: 6px !important;
+}
+
+.agent-insight-copy {
+  width: 100%;
+  line-height: 1.7;
+}
+
+.agent-run-item {
+  width: 100%;
+  min-width: 0;
+}
+
+.agent-run-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.agent-run-detail {
+  display: block;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+
+@media (max-width: 900px) {
+  .agent-run-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+.app-sider {
+  transition: width 0.24s ease, max-width 0.24s ease, min-width 0.24s ease;
+}
+
+.app-sider .ant-layout-sider-children {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+}
+
+.brand-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.brand-copy {
+  min-width: 0;
+}
+
+.brand-mark {
+  display: inline-flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(129, 140, 248, 0.18);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(238, 242, 255, 0.76)),
+    radial-gradient(circle at 30% 20%, rgba(59, 130, 246, 0.22), transparent 24px);
+  color: var(--healing-primary);
+  font-weight: 800;
+  box-shadow: 0 12px 28px rgba(80, 70, 180, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.sider-collapse-btn.ant-btn {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  color: #4f46e5;
+}
+
+.sider-collapse-btn.ant-btn:hover {
+  background: rgba(109, 93, 252, 0.1);
+  color: #4338ca;
+}
+
+.app-sider-collapsed .brand-panel {
+  padding: 20px 12px 16px;
+}
+
+.app-sider-collapsed .brand-row {
+  align-items: center;
+  flex-direction: column;
+  gap: 10px;
+}
+
+
+.app-sider .account-panel {
+  margin-top: auto;
+}
+
+.app-sider-collapsed .account-panel {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  gap: 8px;
+  margin-inline: 12px;
+  padding: 10px 8px;
+}
+
+.app-sider-collapsed .account-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 15px;
+}
+
+.app-sider-collapsed .account-panel .ant-btn {
+  width: 34px;
+  height: 34px;
+}
+.compact-nav {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px 0 18px;
+}
+
+.compact-nav-item.ant-btn {
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  color: #4f46e5;
+  font-size: 18px;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.compact-nav-item.ant-btn:hover {
+  border-color: rgba(129, 140, 248, 0.22);
+  background: rgba(255, 255, 255, 0.72);
+  color: #4338ca;
+  transform: translateY(-1px);
+}
+
+.compact-nav-item.ant-btn.active {
+  border-color: rgba(129, 140, 248, 0.28);
+  background: linear-gradient(135deg, rgba(221, 214, 254, 0.82), rgba(238, 242, 255, 0.72));
+  color: #4338ca;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72), 0 12px 28px rgba(80, 70, 180, 0.12);
+}
+
+.compact-nav-item.ant-btn .anticon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
 }

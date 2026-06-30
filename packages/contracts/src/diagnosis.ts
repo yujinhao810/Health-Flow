@@ -176,6 +176,21 @@ export const generationStatusSchema = z.object({
   integrated: generationStepStatusSchema,
   degraded: z.boolean(),
   warnings: z.array(z.string()).default([]),
+  coordinator: z
+    .object({
+      strategy: z.string(),
+      steps: z.array(
+        z.object({
+          name: z.string(),
+          status: z.enum(['pending', 'running', 'complete', 'fallback', 'skipped']),
+          startedAt: z.string().optional(),
+          endedAt: z.string().optional(),
+          note: z.string().optional(),
+        }),
+      ),
+      arbitration: z.array(z.string()).default([]),
+    })
+    .optional(),
 });
 export type GenerationStatus = z.infer<typeof generationStatusSchema>;
 

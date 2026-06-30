@@ -1,8 +1,10 @@
-import { Module } from '@nestjs/common';
+﻿import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { AgentRunsModule } from '../agent-runs/agent-runs.module';
 import { HealthRecordsModule } from '../health-records/health-records.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { LlmModule } from '../llm/llm.module';
+import { MemoryModule } from '../memory/memory.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { SettingsModule } from '../settings/settings.module';
 import { SafetyModule } from '../safety/safety.module';
@@ -16,9 +18,10 @@ import { ChatStreamService } from './chat-stream.service';
 import { HealthAgentToolsService } from './health-agent-tools.service';
 
 @Module({
-  imports: [AuthModule, PrismaModule, SettingsModule, LlmModule, SnapshotsModule, SafetyModule, HealthRecordsModule, KnowledgeModule, UploadsModule],
+  imports: [AgentRunsModule, AuthModule, PrismaModule, SettingsModule, LlmModule, MemoryModule, SnapshotsModule, SafetyModule, HealthRecordsModule, KnowledgeModule, UploadsModule],
   controllers: [ChatController],
   providers: [ChatService, ChatContextService, ChatStreamService, AgentRuntimeService, HealthAgentToolsService],
   exports: [ChatService, ChatContextService, ChatStreamService],
 })
 export class ChatModule {}
+

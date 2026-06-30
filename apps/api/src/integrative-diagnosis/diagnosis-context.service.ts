@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { DiagnosisInput } from '@health/shared';
 import type { AuthUser } from '../auth/auth.types';
+import { HealthMemoryService } from '../memory/health-memory.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { SnapshotsService } from '../snapshots/snapshots.service';
@@ -11,6 +12,7 @@ export class DiagnosisContextService {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly snapshots: SnapshotsService,
+    private readonly memory: HealthMemoryService,
   ) {}
 
   getUser(user: AuthUser) {
@@ -18,9 +20,10 @@ export class DiagnosisContextService {
   }
 
   async build(user: AuthUser, input: DiagnosisInput) {
-    const [config, snapshot] = await Promise.all([
+    const [config, snapshot, longTermMemory] = await Promise.all([
       this.settings.getLlmConfig(user),
       input.includeRecentHealthContext ? this.snapshots.latest(user) : Promise.resolve(null),
+      input.includeRecentHealthContext ? this.memory.build(user, JSON.stringify(input)) : Promise.resolve(null),
     ]);
 
     const records = input.includeRecentHealthContext
@@ -47,6 +50,8 @@ export class DiagnosisContextService {
         note: record.note,
         payload: record.payload,
       })),
+      longTermMemory: longTermMemory?.memory ?? null,
+      longTermMemoryText: longTermMemory?.text ?? null,
     };
 
     return { config, user, contextSnapshot };

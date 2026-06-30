@@ -13,7 +13,7 @@ export class HealthRecordsService {
     return this.prisma.healthRecord.findMany({
       where: { userId: user.id, type },
       orderBy: { recordedAt: 'desc' },
-      take: 100,
+      take: 200,
     });
   }
 
