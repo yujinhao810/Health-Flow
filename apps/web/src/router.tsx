@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AppShell } from './layout/AppShell';
 import { ChatPage } from './pages/ChatPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -6,7 +6,6 @@ import { DiagnosisDetailPage } from './pages/DiagnosisDetailPage';
 import { DiagnosisPage } from './pages/DiagnosisPage';
 import { RecordsPage } from './pages/RecordsPage';
 import { SettingsPage } from './pages/SettingsPage';
-import { SnapshotsPage } from './pages/SnapshotsPage';
 
 export const router = createBrowserRouter([
   {
@@ -18,7 +17,7 @@ export const router = createBrowserRouter([
       { path: 'chat', element: <ChatPage /> },
       { path: 'diagnosis', element: <DiagnosisPage /> },
       { path: 'diagnosis/:id', element: <DiagnosisDetailPage /> },
-      { path: 'snapshots', element: <SnapshotsPage /> },
+      { path: 'snapshots', element: <Navigate to="/" replace /> },
       { path: 'settings', element: <SettingsPage /> },
     ],
   },

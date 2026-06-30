@@ -11,6 +11,7 @@ export class SnapshotProcessor extends WorkerHost {
   }
 
   async process(job: Job<{ userId: string }>) {
-    return this.snapshots.generateWeekly();
+    if (!job.data.userId) throw new Error('Snapshot job requires userId');
+    return this.snapshots.generateWeekly({ id: job.data.userId, email: '' });
   }
 }

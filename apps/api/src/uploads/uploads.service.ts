@@ -5,8 +5,8 @@ import { createHash, randomUUID } from 'crypto';
 import { mkdir, rm, writeFile } from 'fs/promises';
 import { extname, join, resolve } from 'path';
 import type { ChatAttachment } from '@health/shared';
+import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
-import { SettingsService } from '../settings/settings.service';
 import { FileExtractionService } from './file-extraction.service';
 
 const DEFAULT_UPLOAD_DIR = resolve(process.cwd(), 'storage', 'uploads');
@@ -16,18 +16,16 @@ const PURPOSES: UploadedFilePurpose[] = ['chat_attachment', 'knowledge_source'];
 export class UploadsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly settings: SettingsService,
     private readonly config: ConfigService,
     private readonly extraction: FileExtractionService,
   ) {}
 
-  async create(file: Express.Multer.File | undefined, purpose: UploadedFilePurpose) {
+  async create(user: AuthUser, file: Express.Multer.File | undefined, purpose: UploadedFilePurpose) {
     if (!file) throw new BadRequestException('请选择要上传的文件');
     if (!PURPOSES.includes(purpose)) throw new BadRequestException('不支持的上传用途');
 
     this.assertAllowed(file);
 
-    const user = await this.settings.getDemoUser();
     const id = randomUUID();
     const uploadDir = this.getUploadDir();
     const userDir = join(uploadDir, user.id);
@@ -58,28 +56,26 @@ export class UploadsService {
     return this.toPublicAttachment(uploaded);
   }
 
-  async get(id: string) {
-    const file = await this.getOwnedFile(id);
+  async get(user: AuthUser, id: string) {
+    const file = await this.getOwnedFile(user, id);
     return this.toPublicAttachment(file);
   }
 
-  async getOwnedFile(id: string) {
-    const user = await this.settings.getDemoUser();
+  async getOwnedFile(user: AuthUser, id: string) {
     const file = await this.prisma.uploadedFile.findFirst({ where: { id, userId: user.id } });
     if (!file) throw new NotFoundException('Attachment not found');
     return file;
   }
 
-  async getOwnedFiles(ids: string[]) {
+  async getOwnedFiles(user: AuthUser, ids: string[]) {
     if (!ids.length) return [];
-    const user = await this.settings.getDemoUser();
     const files = await this.prisma.uploadedFile.findMany({ where: { id: { in: ids }, userId: user.id } });
     if (files.length !== new Set(ids).size) throw new NotFoundException('Attachment not found');
     return files;
   }
 
-  async remove(id: string) {
-    const file = await this.getOwnedFile(id);
+  async remove(user: AuthUser, id: string) {
+    const file = await this.getOwnedFile(user, id);
     await this.prisma.uploadedFile.delete({ where: { id: file.id } });
     await rm(file.storagePath, { force: true });
     return { id, deleted: true };

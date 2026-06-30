@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
 import { HealthRecordsModule } from '../health-records/health-records.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { LlmModule } from '../llm/llm.module';
@@ -15,7 +16,7 @@ import { ChatStreamService } from './chat-stream.service';
 import { HealthAgentToolsService } from './health-agent-tools.service';
 
 @Module({
-  imports: [PrismaModule, SettingsModule, LlmModule, SnapshotsModule, SafetyModule, HealthRecordsModule, KnowledgeModule, UploadsModule],
+  imports: [AuthModule, PrismaModule, SettingsModule, LlmModule, SnapshotsModule, SafetyModule, HealthRecordsModule, KnowledgeModule, UploadsModule],
   controllers: [ChatController],
   providers: [ChatService, ChatContextService, ChatStreamService, AgentRuntimeService, HealthAgentToolsService],
   exports: [ChatService, ChatContextService, ChatStreamService],

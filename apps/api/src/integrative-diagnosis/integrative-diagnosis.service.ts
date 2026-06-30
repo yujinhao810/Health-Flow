@@ -15,6 +15,7 @@ import {
   type WesternAssessment,
 } from '@health/shared';
 import { Prisma } from '@prisma/client';
+import type { AuthUser } from '../auth/auth.types';
 import { LlmService } from '../llm/llm.provider';
 import { PrismaService } from '../prisma/prisma.service';
 import { DiagnosisContextService } from './diagnosis-context.service';
@@ -40,14 +41,14 @@ export class IntegrativeDiagnosisService {
     private readonly llm: LlmService,
   ) {}
 
-  async create(input: unknown) {
+  async create(user: AuthUser, input: unknown) {
     const parsed = diagnosisInputSchema.safeParse(input);
     if (!parsed.success) {
       throw new BadRequestException({ message: '辅助分诊输入格式不正确', issues: parsed.error.flatten() });
     }
 
     const diagnosisInput = parsed.data;
-    const { config, user, contextSnapshot } = await this.context.build(diagnosisInput);
+    const { config, contextSnapshot } = await this.context.build(user, diagnosisInput);
     const redFlagResult = this.triage.evaluate(diagnosisInput);
 
     const session = await this.prisma.diagnosisSession.create({
@@ -119,8 +120,7 @@ export class IntegrativeDiagnosisService {
     }
   }
 
-  async list() {
-    const user = await this.context.getUser();
+  async list(user: AuthUser) {
     const sessions = await this.prisma.diagnosisSession.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },
@@ -129,15 +129,13 @@ export class IntegrativeDiagnosisService {
     return sessions.map(toDiagnosisSession);
   }
 
-  async get(id: string) {
-    const user = await this.context.getUser();
+  async get(user: AuthUser, id: string) {
     const session = await this.prisma.diagnosisSession.findFirst({ where: { id, userId: user.id } });
     if (!session) throw new NotFoundException('Diagnosis session not found');
     return toDiagnosisSession(session);
   }
 
-  async remove(id: string) {
-    const user = await this.context.getUser();
+  async remove(user: AuthUser, id: string) {
     const result = await this.prisma.diagnosisSession.deleteMany({ where: { id, userId: user.id } });
     if (result.count === 0) throw new NotFoundException('Diagnosis session not found');
     return { id, deleted: true };

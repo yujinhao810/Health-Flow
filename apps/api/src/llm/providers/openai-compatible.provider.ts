@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { LLM_PROVIDER_METADATA } from '@health/shared';
+import https, { type RequestOptions } from 'node:https';
+import net from 'node:net';
+import tls from 'node:tls';
+import { Readable } from 'node:stream';
 import { LlmConfig, LlmProvider, LlmStreamEvent, LlmStreamRequest, LlmStructuredRequest } from '../llm.types';
 
 type ChatCompletionChunk = {
@@ -149,7 +153,10 @@ export class OpenAiCompatibleProvider implements LlmProvider {
           throw new Error(message);
         }
 
-        const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number } };
+        const payload = (await response.json()) as {
+          choices?: Array<{ message?: { content?: string } }>;
+          usage?: { prompt_tokens?: number; completion_tokens?: number };
+        };
         const rawText = payload.choices?.[0]?.message?.content?.trim();
         if (!rawText) {
           errors.push('Provider 未返回可解析的结构化内容');
@@ -189,7 +196,7 @@ export class OpenAiCompatibleProvider implements LlmProvider {
       headers.Authorization = `Bearer ${config.apiKey}`;
     }
 
-    return fetch(`${baseUrl}/chat/completions`, {
+    return fetchWithOptionalProxy(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
@@ -205,7 +212,7 @@ function trimTrailingSlash(value?: string) {
 function buildStructuredSystemPrompt(system: string, schema: unknown) {
   return [
     system,
-    '你必须只返回一个合法 JSON 对象，不能包含 Markdown、代码块、解释性前后缀或额外文本。',
+    '你必须只返回一个合法 JSON 对象，不要包含 Markdown、代码块、解释性前后缀或额外文本。',
     'JSON 对象必须满足以下 JSON Schema；缺失信息请用空数组、空字符串或保守的安全提示补足，不要省略 required 字段。',
     JSON.stringify(schema),
   ].join('\n');
@@ -244,8 +251,8 @@ function parseSsePayloads(block: string) {
 async function formatHttpError(response: Response) {
   const body = await response.text();
   const detail = safeJsonMessage(body) || body.slice(0, 300) || response.statusText;
-  if (response.status === 401 || response.status === 403) return `认证失败：请检查 API Key 或权限（HTTP ${response.status}）`;
-  if (response.status === 404) return `接口或模型不存在：请检查 Base URL 和模型 ID（HTTP ${response.status}）`;
+  if (response.status === 401 || response.status === 403) return `认证失败：请检查 API Key 或权限（HTTP ${response.status}）：${detail}`;
+  if (response.status === 404) return `接口或模型不存在：请检查 Base URL 和模型 ID（HTTP ${response.status}）：${detail}`;
   if (response.status === 429) return `额度不足或触发限流（HTTP ${response.status}）：${detail}`;
   return `连接验证失败（HTTP ${response.status}）：${detail}`;
 }
@@ -261,8 +268,141 @@ function safeJsonMessage(body: string) {
 
 function formatUnknownError(error: unknown) {
   if (error instanceof Error) {
-    if (error.name === 'AbortError') return '连接超时或请求已取消';
-    return error.message;
+    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+      return '连接超时：后端在 15 秒内没有连上模型服务，请检查网络、代理或 Base URL。';
+    }
+
+    const cause = (error as Error & { cause?: unknown }).cause;
+    const causeMessage = formatErrorCause(cause);
+    if (error.message === 'fetch failed') {
+      return [
+        '后端无法连接到模型服务：fetch failed。',
+        '这通常不是 API Key 或模型名错误，而是网络、代理、DNS、证书，或 Base URL 无法从后端访问。',
+        causeMessage ? `底层原因：${causeMessage}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(' ');
+    }
+
+    return causeMessage ? `${error.message}：${causeMessage}` : error.message;
   }
   return '连接验证失败';
+}
+
+function formatErrorCause(cause: unknown) {
+  if (!cause) return undefined;
+  if (cause instanceof Error) return cause.message;
+  if (typeof cause === 'object') {
+    const value = cause as { code?: string; message?: string; reason?: string };
+    return [value.code, value.message, value.reason].filter(Boolean).join(' ');
+  }
+  return String(cause);
+}
+
+async function fetchWithOptionalProxy(url: string, init: RequestInit) {
+  const proxyUrl = getProxyUrl();
+  if (!proxyUrl) return fetch(url, init);
+  try {
+    return await fetchViaHttpProxy(url, init, proxyUrl);
+  } catch {
+    return fetch(url, init);
+  }
+}
+
+function getProxyUrl() {
+  return process.env.LLM_HTTP_PROXY || process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+}
+
+function fetchViaHttpProxy(url: string, init: RequestInit, proxyUrl: string): Promise<Response> {
+  const target = new URL(url);
+  const proxy = new URL(proxyUrl);
+  if (target.protocol !== 'https:' || !/^https?:$/.test(proxy.protocol)) {
+    return fetch(url, init);
+  }
+
+  return new Promise((resolve, reject) => {
+    const body = typeof init.body === 'string' || Buffer.isBuffer(init.body) ? init.body : undefined;
+    const headers = new Headers(init.headers);
+    headers.set('Host', target.host);
+    if (body !== undefined && !headers.has('Content-Length')) {
+      headers.set('Content-Length', String(Buffer.byteLength(body)));
+    }
+
+    const requestOptions: RequestOptions = {
+        method: init.method ?? 'GET',
+        host: target.hostname,
+        port: target.port ? Number(target.port) : 443,
+        path: `${target.pathname}${target.search}`,
+        headers: Object.fromEntries(headers.entries()),
+        signal: init.signal ?? undefined,
+        createConnection: (_options, callback) => {
+          createProxyTunnel(proxy, target, (error, socket) => {
+            if (error) {
+              callback(error, undefined as unknown as tls.TLSSocket);
+              return;
+            }
+            callback(null, socket as tls.TLSSocket);
+          });
+          return undefined as unknown as net.Socket;
+        },
+      };
+
+    const request = https.request(
+      requestOptions,
+      (upstream) => {
+        const responseHeaders = new Headers();
+        for (const [key, value] of Object.entries(upstream.headers)) {
+          if (Array.isArray(value)) responseHeaders.set(key, value.join(', '));
+          else if (value !== undefined) responseHeaders.set(key, String(value));
+        }
+
+        resolve(
+          new Response(Readable.toWeb(upstream) as ReadableStream, {
+            status: upstream.statusCode ?? 500,
+            statusText: upstream.statusMessage,
+            headers: responseHeaders,
+          }),
+        );
+      },
+    );
+
+    request.on('error', reject);
+    if (body !== undefined) request.write(body);
+    request.end();
+  });
+}
+
+function createProxyTunnel(proxy: URL, target: URL, callback: (error: Error | null, socket?: net.Socket) => void) {
+  const proxyPort = proxy.port ? Number(proxy.port) : proxy.protocol === 'https:' ? 443 : 80;
+  const proxySocket = net.connect(proxyPort, proxy.hostname);
+  let buffer = Buffer.alloc(0);
+
+  proxySocket.once('connect', () => {
+    const targetPort = target.port || '443';
+    const auth = proxy.username ? `Proxy-Authorization: Basic ${Buffer.from(`${decodeURIComponent(proxy.username)}:${decodeURIComponent(proxy.password)}`).toString('base64')}\r\n` : '';
+    proxySocket.write(`CONNECT ${target.hostname}:${targetPort} HTTP/1.1\r\nHost: ${target.hostname}:${targetPort}\r\n${auth}Connection: keep-alive\r\n\r\n`);
+  });
+
+  proxySocket.on('data', function onData(chunk) {
+    buffer = Buffer.concat([buffer, chunk]);
+    const headerEnd = buffer.indexOf('\r\n\r\n');
+    if (headerEnd < 0) return;
+
+    proxySocket.off('data', onData);
+    const header = buffer.slice(0, headerEnd).toString('utf8');
+    if (!/^HTTP\/1\.[01] 200/i.test(header)) {
+      callback(new Error(`代理连接失败：${header.split('\r\n')[0] || 'unknown response'}`));
+      proxySocket.destroy();
+      return;
+    }
+
+    const rest = buffer.slice(headerEnd + 4);
+    const secureSocket = tls.connect({ socket: proxySocket, servername: target.hostname }, () => {
+      if (rest.length) secureSocket.unshift(rest);
+      callback(null, secureSocket);
+    });
+    secureSocket.once('error', callback);
+  });
+
+  proxySocket.once('error', callback);
 }

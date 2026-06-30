@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { RagCitation } from '@health/shared';
+import type { AuthUser } from '../auth/auth.types';
 import { RagService } from '../knowledge/rag.service';
 import { HEALTH_ANALYSIS_SYSTEM } from '../llm/prompts/analysis.system';
 import { PSYCHOLOGICAL_ASSISTANT_SYSTEM } from '../llm/prompts/assistant.system';
@@ -18,12 +19,12 @@ export class ChatContextService {
     private readonly uploads: UploadsService,
   ) {}
 
-  async buildContext(threadId: string, options?: { userInput?: string; ragEnabled?: boolean; attachmentIds?: string[] }) {
+  async buildContext(user: AuthUser, threadId: string, options?: { userInput?: string; ragEnabled?: boolean; attachmentIds?: string[] }) {
     const [config, snapshot, thread, files] = await Promise.all([
-      this.settings.getLlmConfig(),
-      this.snapshots.latest(),
-      this.chat.getThread(threadId),
-      this.uploads.getOwnedFiles(options?.attachmentIds ?? []),
+      this.settings.getLlmConfig(user),
+      this.snapshots.latest(user),
+      this.chat.getThread(user, threadId),
+      this.uploads.getOwnedFiles(user, options?.attachmentIds ?? []),
     ]);
     const healthContext = snapshot
       ? [

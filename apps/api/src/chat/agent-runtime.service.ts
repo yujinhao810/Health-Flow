@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { StreamEvent } from '@health/shared';
+import type { AuthUser } from '../auth/auth.types';
 import { LlmService } from '../llm/llm.provider';
 import type { LlmContentBlock, LlmMessage, LlmStreamEvent, LlmToolStreamEvent } from '../llm/llm.types';
 import { HealthAgentToolsService } from './health-agent-tools.service';
@@ -7,6 +8,7 @@ import { HealthAgentToolsService } from './health-agent-tools.service';
 const MAX_TOOL_ITERATIONS = 5;
 
 type AgentRuntimeRequest = {
+  user: AuthUser;
   config: Parameters<LlmService['streamChat']>[0]['config'];
   system: string;
   messages: LlmMessage[];
@@ -27,7 +29,7 @@ export class AgentRuntimeService {
   ) {}
 
   async *run(request: AgentRuntimeRequest): AsyncIterable<AgentRuntimeEvent> {
-    const deterministicRecord = await this.tools.tryCreateRecordFromUserText(request.userInput);
+    const deterministicRecord = await this.tools.tryCreateRecordFromUserText(request.user, request.userInput);
     if (deterministicRecord) {
       yield {
         type: 'tool_result',
@@ -112,6 +114,7 @@ export class AgentRuntimeService {
       const toolResults: LlmContentBlock[] = [];
       for (const toolUse of toolUses) {
         const result = await this.tools.execute(toolUse.name, toolUse.input, {
+          user: request.user,
           userInput: request.userInput,
           config: request.config,
           signal: request.signal,

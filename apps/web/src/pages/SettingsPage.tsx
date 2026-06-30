@@ -66,7 +66,7 @@ export function SettingsPage() {
   async function handleValidate() {
     try {
       const values = await form.validateFields();
-      validate.mutate({ ...values, apiKey: values.apiKey?.trim() || undefined });
+      validate.mutate({ ...values, apiKey: normalizeApiKeyInput(values.apiKey) });
     } catch {
       message.warning('请先填写提供商和模型');
     }
@@ -87,7 +87,7 @@ export function SettingsPage() {
       <Typography.Title level={2}>模型设置</Typography.Title>
       <Card title="上游大模型配置">
         <Typography.Paragraph type="secondary">
-          API Key 只应由后端保存和调用。正式环境请接入加密存储或 KMS；当前脚手架会在后端用 ENCRYPTION_KEY 加密保存。
+          API Key 只由后端保存和调用。测试连接时，如果提示 fetch failed，通常表示后端访问模型服务的网络链路失败，而不是前端页面本身失败。
         </Typography.Paragraph>
         <Alert
           type="info"
@@ -99,7 +99,7 @@ export function SettingsPage() {
           form={form}
           layout="vertical"
           initialValues={{ provider: 'mock', model: 'mock-health-assistant', ragEnabled: true, ragTopK: 5 }}
-          onFinish={(values) => save.mutate({ ...values, apiKey: values.apiKey?.trim() || undefined })}
+          onFinish={(values) => save.mutate({ ...values, apiKey: normalizeApiKeyInput(values.apiKey) })}
         >
           <Form.Item name="provider" label="提供商" rules={[{ required: true }]}>
             <Select options={PROVIDER_OPTIONS} onChange={handleProviderChange} />
@@ -117,6 +117,9 @@ export function SettingsPage() {
             }
           >
             <Input.Password
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore="true"
               disabled={!providerMeta.requiresApiKey}
               placeholder={config.data?.maskedApiKey ? `已保存：${config.data.maskedApiKey}` : '仅后端保存，不在前端展示明文'}
             />
@@ -161,6 +164,11 @@ function formatErrorMessage(error: unknown) {
     return simplifyApiError(error.message);
   }
   return '未知错误';
+}
+
+function normalizeApiKeyInput(apiKey?: string) {
+  const value = apiKey?.replace(/^Bearer\s+/i, '').replace(/\s+/g, '');
+  return value || undefined;
 }
 
 function simplifyApiError(messageText: string) {

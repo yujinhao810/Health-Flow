@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import type { AuthUser } from '../auth/auth.types';
 import { CrisisPolicyService } from '../safety/crisis-policy.service';
 import { AgentRuntimeService } from './agent-runtime.service';
 import { ChatContextService } from './chat-context.service';
@@ -15,8 +16,8 @@ export class ChatStreamService {
     private readonly crisis: CrisisPolicyService,
   ) {}
 
-  async *stream(threadId: string, input: SendMessageDto, signal?: AbortSignal) {
-    const userMessage = await this.chat.addUserMessage(threadId, input);
+  async *stream(user: AuthUser, threadId: string, input: SendMessageDto, signal?: AbortSignal) {
+    const userMessage = await this.chat.addUserMessage(user, threadId, input);
 
     yield { type: 'conversation_started', conversationId: threadId, messageId: userMessage.id } as const;
 
@@ -33,7 +34,7 @@ export class ChatStreamService {
       return;
     }
 
-    const { config, system, messages, ragEnabled, citations, attachments } = await this.context.buildContext(threadId, {
+    const { config, system, messages, ragEnabled, citations, attachments } = await this.context.buildContext(user, threadId, {
       userInput: input.content,
       attachmentIds: input.attachmentIds,
       ragEnabled: input.ragEnabled,
@@ -48,6 +49,7 @@ export class ChatStreamService {
     let outputTokens: number | undefined;
 
     for await (const event of this.runtime.run({
+      user,
       config,
       system,
       messages,

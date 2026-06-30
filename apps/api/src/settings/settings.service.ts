@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LLM_PROVIDER_METADATA, LlmProviderName } from '@health/shared';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
+import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { LlmConfig } from '../llm/llm.types';
 
@@ -23,8 +24,7 @@ export class SettingsService {
     });
   }
 
-  async getLlmConfig(): Promise<LlmConfig> {
-    const user = await this.getDemoUser();
+  async getLlmConfig(user: AuthUser): Promise<LlmConfig> {
     const saved = await this.prisma.userLlmConfig.findFirst({
       where: { userId: user.id, enabled: true },
       orderBy: { updatedAt: 'desc' },
@@ -53,8 +53,7 @@ export class SettingsService {
     };
   }
 
-  async getPublicLlmConfig() {
-    const user = await this.getDemoUser();
+  async getPublicLlmConfig(user: AuthUser) {
     const saved = await this.prisma.userLlmConfig.findFirst({
       where: { userId: user.id, enabled: true },
       orderBy: { updatedAt: 'desc' },
@@ -74,7 +73,7 @@ export class SettingsService {
       };
     }
 
-    const config = await this.getLlmConfig();
+    const config = await this.getLlmConfig(user);
     return {
       provider: config.provider,
       model: config.model,
@@ -93,8 +92,7 @@ export class SettingsService {
     };
   }
 
-  async saveLlmConfig(config: LlmConfig) {
-    const user = await this.getDemoUser();
+  async saveLlmConfig(user: AuthUser, config: LlmConfig) {
     const current = await this.prisma.userLlmConfig.findFirst({
       where: { userId: user.id, enabled: true },
       orderBy: { updatedAt: 'desc' },
@@ -192,7 +190,7 @@ function maskSecret(secret: string) {
 }
 
 function normalizeApiKey(apiKey?: string) {
-  const value = apiKey?.trim();
+  const value = apiKey?.replace(/^Bearer\s+/i, '').replace(/\s+/g, '');
   if (!value || value.includes('****')) return undefined;
   return value;
 }

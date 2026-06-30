@@ -1,19 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { createHealthRecordSchema } from '@health/shared';
 import { HealthRecordType, Prisma } from '@prisma/client';
+import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
-import { SettingsService } from '../settings/settings.service';
 import { CreateHealthRecordDto } from './dto/create-health-record.dto';
 
 @Injectable()
 export class HealthRecordsService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly settings: SettingsService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async list(type?: HealthRecordType) {
-    const user = await this.settings.getDemoUser();
+  async list(user: AuthUser, type?: HealthRecordType) {
     return this.prisma.healthRecord.findMany({
       where: { userId: user.id, type },
       orderBy: { recordedAt: 'desc' },
@@ -21,7 +17,7 @@ export class HealthRecordsService {
     });
   }
 
-  async create(input: CreateHealthRecordDto) {
+  async create(user: AuthUser, input: CreateHealthRecordDto) {
     const parsed = createHealthRecordSchema.safeParse(input);
     if (!parsed.success) {
       throw new BadRequestException({
@@ -30,7 +26,6 @@ export class HealthRecordsService {
       });
     }
 
-    const user = await this.settings.getDemoUser();
     const recordedAt = new Date(parsed.data.recordedAt);
     if (Number.isNaN(recordedAt.getTime())) {
       throw new BadRequestException('recordedAt must be a valid ISO date');
@@ -47,8 +42,7 @@ export class HealthRecordsService {
     });
   }
 
-  async remove(id: string) {
-    const user = await this.settings.getDemoUser();
+  async remove(user: AuthUser, id: string) {
     const result = await this.prisma.healthRecord.deleteMany({ where: { id, userId: user.id } });
     if (result.count === 0) {
       throw new NotFoundException('Health record not found');

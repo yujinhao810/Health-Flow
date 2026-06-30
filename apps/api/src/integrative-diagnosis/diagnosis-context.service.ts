@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { DiagnosisInput } from '@health/shared';
+import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { SnapshotsService } from '../snapshots/snapshots.service';
@@ -12,15 +13,14 @@ export class DiagnosisContextService {
     private readonly snapshots: SnapshotsService,
   ) {}
 
-  getUser() {
-    return this.settings.getDemoUser();
+  getUser(user: AuthUser) {
+    return user;
   }
 
-  async build(input: DiagnosisInput) {
-    const [config, user, snapshot] = await Promise.all([
-      this.settings.getLlmConfig(),
-      this.settings.getDemoUser(),
-      input.includeRecentHealthContext ? this.snapshots.latest() : Promise.resolve(null),
+  async build(user: AuthUser, input: DiagnosisInput) {
+    const [config, snapshot] = await Promise.all([
+      this.settings.getLlmConfig(user),
+      input.includeRecentHealthContext ? this.snapshots.latest(user) : Promise.resolve(null),
     ]);
 
     const records = input.includeRecentHealthContext

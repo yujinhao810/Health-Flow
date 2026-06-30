@@ -1,10 +1,14 @@
-import { BadRequestException, Body, Controller, Get, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { llmConfigSchema } from '@health/shared';
+import { AuthGuard } from '../auth/auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { AuthUser } from '../auth/auth.types';
 import { LlmService } from '../llm/llm.provider';
 import { LlmConfig } from '../llm/llm.types';
 import { SettingsService } from './settings.service';
 
 @Controller('llm')
+@UseGuards(AuthGuard)
 export class SettingsController {
   constructor(
     private readonly settings: SettingsService,
@@ -12,25 +16,25 @@ export class SettingsController {
   ) {}
 
   @Get('config')
-  getConfig() {
-    return this.settings.getPublicLlmConfig();
+  getConfig(@CurrentUser() user: AuthUser) {
+    return this.settings.getPublicLlmConfig(user);
   }
 
   @Post('config')
-  async saveConfig(@Body() body: unknown) {
+  async saveConfig(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const config = parseLlmConfig(body);
-    await this.settings.saveLlmConfig(config);
-    return this.settings.getPublicLlmConfig();
+    await this.settings.saveLlmConfig(user, config);
+    return this.settings.getPublicLlmConfig(user);
   }
 
   @Post('validate')
-  async validate(@Body() body: unknown) {
+  async validate(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     try {
       const config = parseLlmConfig(body);
-      const current = await this.settings.getLlmConfig();
+      const current = await this.settings.getLlmConfig(user);
       const mergedConfig = this.settings.resolveProviderRuntimeConfig({
         ...config,
-        apiKey: config.apiKey?.trim() || (current.provider === config.provider ? current.apiKey : undefined),
+        apiKey: normalizeApiKey(config.apiKey) || (current.provider === config.provider ? current.apiKey : undefined),
         baseUrl: config.baseUrl || (current.provider === config.provider ? current.baseUrl : undefined),
       });
       return this.llm.validate(mergedConfig);
@@ -48,7 +52,7 @@ function parseLlmConfig(body: unknown): LlmConfig {
 
   return {
     ...parsed.data,
-    apiKey: parsed.data.apiKey?.trim() || undefined,
+    apiKey: normalizeApiKey(parsed.data.apiKey),
     baseUrl: parsed.data.baseUrl || undefined,
   };
 }
@@ -56,4 +60,9 @@ function parseLlmConfig(body: unknown): LlmConfig {
 function formatValidationError(error: unknown) {
   if (error instanceof Error) return error.message;
   return '连接验证失败';
+}
+
+function normalizeApiKey(apiKey?: string) {
+  const value = apiKey?.replace(/^Bearer\s+/i, '').replace(/\s+/g, '');
+  return value || undefined;
 }

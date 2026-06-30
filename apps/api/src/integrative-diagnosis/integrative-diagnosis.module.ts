@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
 import { LlmModule } from '../llm/llm.module';
 import { SafetyModule } from '../safety/safety.module';
 import { SettingsModule } from '../settings/settings.module';
@@ -9,7 +10,7 @@ import { IntegrativeDiagnosisService } from './integrative-diagnosis.service';
 import { RedFlagTriageService } from './red-flag-triage.service';
 
 @Module({
-  imports: [LlmModule, SafetyModule, SettingsModule, SnapshotsModule],
+  imports: [AuthModule, LlmModule, SafetyModule, SettingsModule, SnapshotsModule],
   controllers: [IntegrativeDiagnosisController],
   providers: [DiagnosisContextService, IntegrativeDiagnosisService, RedFlagTriageService],
 })

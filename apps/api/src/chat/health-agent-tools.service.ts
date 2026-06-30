@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { createHealthRecordSchema, healthPlanSchema, healthRecordTypeSchema } from '@health/shared';
 import type { HealthRecordType } from '@prisma/client';
 import { z } from 'zod';
+import type { AuthUser } from '../auth/auth.types';
 import { HealthRecordsService } from '../health-records/health-records.service';
 import { LlmService } from '../llm/llm.provider';
 import { RedactionService } from '../safety/redaction.service';
@@ -117,11 +118,11 @@ export class HealthAgentToolsService {
     return hasExplicitWriteIntent(userInput);
   }
 
-  async tryCreateRecordFromUserText(userInput: string): Promise<(HealthAgentToolResult & { assistantText: string }) | null> {
+  async tryCreateRecordFromUserText(user: AuthUser, userInput: string): Promise<(HealthAgentToolResult & { assistantText: string }) | null> {
     const parsed = parseRecordFromText(userInput);
     if (!parsed) return null;
 
-    const record = await this.records.create(parsed.input);
+    const record = await this.records.create(user, parsed.input);
     const assistantText = parsed.assistantText;
 
     return {
@@ -144,13 +145,13 @@ export class HealthAgentToolsService {
     try {
       switch (name) {
         case 'health_records_list':
-          return this.listRecords(input);
+          return this.listRecords(context.user, input);
         case 'health_record_create':
-          return this.createRecord(input, context.userInput);
+          return this.createRecord(context.user, input, context.userInput);
         case 'snapshot_latest':
-          return this.latestSnapshot();
+          return this.latestSnapshot(context.user);
         case 'snapshot_generate_weekly':
-          return this.generateWeeklySnapshot();
+          return this.generateWeeklySnapshot(context.user);
         case 'health_plan_generate':
           return this.generatePlan(input, context);
         default:
@@ -162,9 +163,9 @@ export class HealthAgentToolsService {
     }
   }
 
-  private async listRecords(input: unknown): Promise<HealthAgentToolResult> {
+  private async listRecords(user: AuthUser, input: unknown): Promise<HealthAgentToolResult> {
     const parsed = recordListInputSchema.parse(input ?? {});
-    const records = await this.records.list(parsed.type as HealthRecordType | undefined);
+    const records = await this.records.list(user, parsed.type as HealthRecordType | undefined);
     const from = parsed.from ? new Date(parsed.from).getTime() : undefined;
     const to = parsed.to ? new Date(parsed.to).getTime() : undefined;
     const filtered = records
@@ -189,7 +190,7 @@ export class HealthAgentToolsService {
     };
   }
 
-  private async createRecord(input: unknown, userInput: string): Promise<HealthAgentToolResult> {
+  private async createRecord(user: AuthUser, input: unknown, userInput: string): Promise<HealthAgentToolResult> {
     if (!hasExplicitWriteIntent(userInput)) {
       return {
         isError: true,
@@ -199,7 +200,7 @@ export class HealthAgentToolsService {
     }
 
     const parsed = createHealthRecordSchema.parse(input);
-    const record = await this.records.create(parsed);
+    const record = await this.records.create(user, parsed);
     return {
       content: JSON.stringify({
         ok: true,
@@ -215,8 +216,8 @@ export class HealthAgentToolsService {
     };
   }
 
-  private async latestSnapshot(): Promise<HealthAgentToolResult> {
-    const snapshot = await this.snapshots.latest();
+  private async latestSnapshot(user: AuthUser): Promise<HealthAgentToolResult> {
+    const snapshot = await this.snapshots.latest(user);
     return {
       content: JSON.stringify({
         ok: true,
@@ -226,8 +227,8 @@ export class HealthAgentToolsService {
     };
   }
 
-  private async generateWeeklySnapshot(): Promise<HealthAgentToolResult> {
-    const snapshot = await this.snapshots.generateWeekly();
+  private async generateWeeklySnapshot(user: AuthUser): Promise<HealthAgentToolResult> {
+    const snapshot = await this.snapshots.generateWeekly(user);
     return {
       content: JSON.stringify({
         ok: true,
@@ -239,7 +240,7 @@ export class HealthAgentToolsService {
 
   private async generatePlan(input: unknown, context: HealthAgentToolContext): Promise<HealthAgentToolResult> {
     const parsed = planInputSchema.parse(input ?? {});
-    const [snapshot, recentRecords] = await Promise.all([this.snapshots.latest(), this.records.list()]);
+    const [snapshot, recentRecords] = await Promise.all([this.snapshots.latest(context.user), this.records.list(context.user)]);
     const payload = {
       request: parsed,
       latestSnapshot: formatSnapshot(snapshot),

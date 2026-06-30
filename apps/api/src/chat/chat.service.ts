@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
-import { SettingsService } from '../settings/settings.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { CreateThreadDto } from './dto/create-thread.dto';
 import { SendMessageDto } from './dto/send-message.dto';
@@ -16,12 +16,10 @@ const messageInclude = {
 export class ChatService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly settings: SettingsService,
     private readonly uploads: UploadsService,
   ) {}
 
-  async createThread(input: CreateThreadDto) {
-    const user = await this.settings.getDemoUser();
+  async createThread(user: AuthUser, input: CreateThreadDto) {
     return this.prisma.conversation.create({
       data: {
         userId: user.id,
@@ -30,8 +28,7 @@ export class ChatService {
     });
   }
 
-  async listThreads() {
-    const user = await this.settings.getDemoUser();
+  async listThreads(user: AuthUser) {
     const threads = await this.prisma.conversation.findMany({
       where: { userId: user.id },
       orderBy: { updatedAt: 'desc' },
@@ -45,8 +42,7 @@ export class ChatService {
     }));
   }
 
-  async getThread(id: string) {
-    const user = await this.settings.getDemoUser();
+  async getThread(user: AuthUser, id: string) {
     const thread = await this.prisma.conversation.findFirst({
       where: { id, userId: user.id },
       include: { messages: { orderBy: { createdAt: 'asc' }, include: messageInclude } },
@@ -59,10 +55,10 @@ export class ChatService {
     };
   }
 
-  async addUserMessage(threadId: string, input: SendMessageDto) {
-    const thread = await this.getThread(threadId);
+  async addUserMessage(user: AuthUser, threadId: string, input: SendMessageDto) {
+    const thread = await this.getThread(user, threadId);
     const attachmentIds = [...new Set(input.attachmentIds ?? [])];
-    const files = await this.uploads.getOwnedFiles(attachmentIds);
+    const files = await this.uploads.getOwnedFiles(user, attachmentIds);
     const message = await this.prisma.chatMessage.create({
       data: {
         conversationId: thread.id,
@@ -81,8 +77,7 @@ export class ChatService {
     return this.toPublicMessage(message);
   }
 
-  async removeThread(id: string) {
-    const user = await this.settings.getDemoUser();
+  async removeThread(user: AuthUser, id: string) {
     const result = await this.prisma.conversation.deleteMany({ where: { id, userId: user.id } });
     if (result.count === 0) {
       throw new NotFoundException('Conversation not found');

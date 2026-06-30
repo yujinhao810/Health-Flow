@@ -1,5 +1,6 @@
 import { Spin, Typography } from 'antd';
 import { useCallback, useLayoutEffect, useRef } from 'react';
+import { withAuthToken } from '../../api/client';
 import type { UiMessage } from '../../hooks/useChatStream';
 
 const bottomThreshold = 24;
@@ -71,17 +72,31 @@ export function MessageList({ messages, loading }: { messages: UiMessage[]; load
             {message.ragStatus === 'searching' ? <div className="chat-rag-status">正在检索健康安全知识库...</div> : null}
             {message.attachments?.length ? (
               <div className="chat-attachments">
-                {message.attachments.map((attachment) =>
-                  attachment.mimeType.startsWith('image/') ? (
-                    <a key={attachment.id} href={attachment.contentUrl} target="_blank" rel="noreferrer" className="chat-image-link">
-                      <img className="chat-image-thumb" src={attachment.contentUrl} alt={attachment.originalName} />
-                    </a>
-                  ) : (
-                    <a key={attachment.id} href={attachment.contentUrl} target="_blank" rel="noreferrer" className="chat-attachment-chip">
+                {message.attachments.map((attachment) => {
+                  const contentUrl = attachment.contentUrl ? withAuthToken(attachment.contentUrl) : undefined;
+
+                  if (contentUrl && attachment.mimeType.startsWith('image/')) {
+                    return (
+                      <a key={attachment.id} href={contentUrl} target="_blank" rel="noreferrer" className="chat-image-link">
+                        <img className="chat-image-thumb" src={contentUrl} alt={attachment.originalName} />
+                      </a>
+                    );
+                  }
+
+                  if (contentUrl) {
+                    return (
+                      <a key={attachment.id} href={contentUrl} target="_blank" rel="noreferrer" className="chat-attachment-chip">
+                        文件：{attachment.originalName}
+                      </a>
+                    );
+                  }
+
+                  return (
+                    <span key={attachment.id} className="chat-attachment-chip">
                       文件：{attachment.originalName}
-                    </a>
-                  ),
-                )}
+                    </span>
+                  );
+                })}
               </div>
             ) : null}
             {message.citations?.length ? (

@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "packageManager": "pnpm@9.0.0",
   "scripts": {
-    "dev": "corepack pnpm --parallel --filter api --filter web run dev",
-    "dev:api": "corepack pnpm --filter api dev",
+    "dev": "corepack pnpm --filter @health/shared run build && corepack pnpm --parallel --filter @health/shared --filter api --filter web run dev",
+    "dev:api": "corepack pnpm --filter @health/shared run build && corepack pnpm --parallel --filter @health/shared --filter api run dev",
     "dev:web": "corepack pnpm --filter web dev",
     "dev:worker": "corepack pnpm --filter api worker",
     "build": "corepack pnpm --filter @health/shared --filter api --filter web run build",

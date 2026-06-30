@@ -1,6 +1,8 @@
 import type { LlmConfig, LlmToolDefinition } from '../llm/llm.types';
+import type { AuthUser } from '../auth/auth.types';
 
 export type HealthAgentToolContext = {
+  user: AuthUser;
   userInput: string;
   config: LlmConfig;
   signal?: AbortSignal;

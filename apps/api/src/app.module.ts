@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AuthModule } from './auth/auth.module';
 import { ChatModule } from './chat/chat.module';
 import { envSchema } from './config/env.schema';
 import { HealthRecordsModule } from './health-records/health-records.module';
@@ -19,6 +20,7 @@ import { UploadsModule } from './uploads/uploads.module';
       validate: (env) => envSchema.parse(env),
     }),
     PrismaModule,
+    AuthModule,
     LlmModule,
     SafetyModule,
     SettingsModule,

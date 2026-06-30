@@ -47,8 +47,6 @@ export class AnthropicProvider implements LlmProvider {
     }
 
     const client = new Anthropic({ apiKey: config.apiKey, baseURL: config.baseUrl });
-    const messages = toAnthropicMessages(request.messages);
-
     const stream = client.messages.stream(
       {
         model,
@@ -56,7 +54,7 @@ export class AnthropicProvider implements LlmProvider {
         system: request.system,
         ...(usesAlwaysOnThinking(model) ? {} : { thinking: { type: 'adaptive' as const } }),
         output_config: { effort: 'high' },
-        messages,
+        messages: toAnthropicMessages(request.messages),
       },
       { signal: request.signal },
     );
@@ -141,8 +139,6 @@ export class AnthropicProvider implements LlmProvider {
     }
 
     const client = new Anthropic({ apiKey: config.apiKey, baseURL: config.baseUrl });
-    const messages = toAnthropicMessages(request.messages);
-
     const response = await client.messages.create(
       {
         model,
@@ -153,7 +149,7 @@ export class AnthropicProvider implements LlmProvider {
           effort: 'high',
           format: { type: 'json_schema', schema: request.schema },
         },
-        messages,
+        messages: toAnthropicMessages(request.messages),
       } as Anthropic.MessageCreateParamsNonStreaming,
       { signal: request.signal },
     );
@@ -260,7 +256,29 @@ function parseJsonPayload<T>(rawText: string): T {
 
 function formatAnthropicError(error: unknown) {
   if (error instanceof Error) {
-    return error.message;
+    const cause = (error as Error & { cause?: unknown }).cause;
+    const causeMessage = formatErrorCause(cause);
+    if (error.message === 'fetch failed') {
+      return [
+        '后端无法连接到 Anthropic：fetch failed。',
+        '这通常不是 API Key 或模型名错误，而是网络、代理、DNS、证书，或 Base URL 无法从后端访问。',
+        causeMessage ? `底层原因：${causeMessage}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(' ');
+    }
+
+    return causeMessage ? `${error.message}：${causeMessage}` : error.message;
   }
   return 'Anthropic 连接验证失败';
+}
+
+function formatErrorCause(cause: unknown) {
+  if (!cause) return undefined;
+  if (cause instanceof Error) return cause.message;
+  if (typeof cause === 'object') {
+    const value = cause as { code?: string; message?: string; reason?: string };
+    return [value.code, value.message, value.reason].filter(Boolean).join(' ');
+  }
+  return String(cause);
 }

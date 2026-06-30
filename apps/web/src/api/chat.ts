@@ -1,5 +1,5 @@
 import type { ChatAttachment, ChatMessage, CreateThreadInput, SendMessageInput, StreamEvent } from '@health/shared';
-import { API_BASE_URL, api } from './client';
+import { API_BASE_URL, api, authHeaders, clearAuthToken } from './client';
 
 export type Conversation = {
   id: string;
@@ -39,10 +39,12 @@ export async function uploadFile(file: File, purpose: 'chat_attachment' | 'knowl
 
   const response = await fetch(`${API_BASE_URL}/uploads`, {
     method: 'POST',
+    headers: authHeaders(),
     body: form,
   });
 
   if (!response.ok) {
+    if (response.status === 401) clearAuthToken();
     throw new Error(await response.text());
   }
 
@@ -67,12 +69,13 @@ export async function streamConversation(
 ) {
   const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(input),
     signal,
   });
 
   if (!response.ok || !response.body) {
+    if (response.status === 401) clearAuthToken();
     throw new Error(await response.text());
   }
 
