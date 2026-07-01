@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const apiRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const schemaPath = resolve(apiRoot, 'prisma/schema.prisma');
+const prismaBin = resolve(apiRoot, 'node_modules/.bin', process.platform === 'win32' ? 'prisma.CMD' : 'prisma');
 const require = createRequire(import.meta.url);
 const clientPackagePath = require.resolve('@prisma/client/package.json', { paths: [apiRoot] });
 const generatedTypesPath = resolve(dirname(clientPackagePath), '../../.prisma/client/index.d.ts');
@@ -15,7 +16,7 @@ if (!shouldGenerate()) {
   process.exit(0);
 }
 
-const result = spawnSync('prisma', ['generate'], {
+const result = spawnSync(existsSync(prismaBin) ? prismaBin : 'prisma', ['generate'], {
   cwd: apiRoot,
   stdio: 'inherit',
   shell: process.platform === 'win32',

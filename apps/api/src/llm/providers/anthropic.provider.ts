@@ -16,7 +16,7 @@ import {
 @Injectable()
 export class AnthropicProvider implements LlmProvider {
   name = 'anthropic' as const;
-  capabilities = { supportsToolUse: true };
+  capabilities = { supportsToolUse: true, supportsEmbeddings: false };
 
   async validate(config: LlmConfig) {
     if (!config.apiKey) {
@@ -215,6 +215,16 @@ function toAnthropicContent(message: LlmMessage): Anthropic.MessageParam['conten
           tool_use_id: block.toolUseId,
           content: block.content,
           is_error: block.isError,
+        };
+      }
+      if (block.type === 'image') {
+        return {
+          type: 'image' as const,
+          source: {
+            type: 'base64' as const,
+            media_type: block.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+            data: block.data,
+          },
         };
       }
       return {

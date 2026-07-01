@@ -21,13 +21,19 @@ export type LlmToolResultBlock = {
   isError?: boolean;
 };
 
+export type LlmImageBlock = {
+  type: 'image';
+  mediaType: string;
+  data: string;
+};
+
 export type LlmProviderContentBlock = {
   type: 'provider_content';
   provider: 'anthropic';
   content: unknown;
 };
 
-export type LlmContentBlock = LlmTextBlock | LlmToolUseBlock | LlmToolResultBlock | LlmProviderContentBlock;
+export type LlmContentBlock = LlmTextBlock | LlmImageBlock | LlmToolUseBlock | LlmToolResultBlock | LlmProviderContentBlock;
 
 export type LlmMessage = {
   role: 'system' | 'user' | 'assistant';
@@ -39,8 +45,12 @@ export type LlmConfig = {
   model: string;
   apiKey?: string;
   baseUrl?: string;
+  embeddingApiKey?: string;
+  embeddingBaseUrl?: string;
+  embeddingModel?: string;
   ragEnabled?: boolean;
   ragTopK?: number;
+  visionEnabled?: boolean;
 };
 
 export type LlmToolDefinition = {
@@ -52,6 +62,7 @@ export type LlmToolDefinition = {
 
 export type LlmProviderCapabilities = {
   supportsToolUse: boolean;
+  supportsEmbeddings: boolean;
 };
 
 export type LlmStreamRequest = {
@@ -81,6 +92,18 @@ export type LlmStructuredResult<T = unknown> = {
   usage?: { inputTokens?: number; outputTokens?: number };
 };
 
+export type LlmEmbeddingRequest = {
+  config: LlmConfig;
+  texts: string[];
+  model?: string;
+  signal?: AbortSignal;
+};
+
+export type LlmEmbeddingResult = {
+  vectors: number[][];
+  model: string;
+};
+
 export type LlmStreamEvent =
   | { type: 'delta'; text: string }
   | { type: 'usage'; inputTokens?: number; outputTokens?: number }
@@ -98,5 +121,6 @@ export interface LlmProvider {
   validate(config: LlmConfig): Promise<LlmValidationResult>;
   streamChat(request: LlmStreamRequest): AsyncIterable<LlmStreamEvent>;
   streamChatWithTools?(request: LlmToolStreamRequest): AsyncIterable<LlmToolStreamEvent>;
+  embedTexts?(request: LlmEmbeddingRequest): Promise<LlmEmbeddingResult>;
   generateStructured<T = unknown>(request: LlmStructuredRequest): Promise<LlmStructuredResult<T>>;
 }

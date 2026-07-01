@@ -41,6 +41,7 @@ export function SettingsPage() {
       apiKey: undefined,
       ragEnabled: config.data.ragEnabled ?? true,
       ragTopK: config.data.ragTopK ?? 5,
+      visionEnabled: config.data.visionEnabled ?? false,
     });
   }, [config.data, form]);
 
@@ -98,7 +99,7 @@ export function SettingsPage() {
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ provider: 'mock', model: 'mock-health-assistant', ragEnabled: true, ragTopK: 5 }}
+          initialValues={{ provider: 'mock', model: 'mock-health-assistant', ragEnabled: true, ragTopK: 5, visionEnabled: false }}
           onFinish={(values) => save.mutate({ ...values, apiKey: normalizeApiKeyInput(values.apiKey) })}
         >
           <Form.Item name="provider" label="提供商" rules={[{ required: true }]}>
@@ -131,6 +132,17 @@ export function SettingsPage() {
           >
             <Input placeholder={defaultBaseUrl ? `默认：${defaultBaseUrl}` : '留空使用后端默认值'} />
           </Form.Item>
+          <Card size="small" title="图片理解（多模态）" style={{ marginBottom: 16 }}>
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message="如果你使用的模型支持识别图片，但模型名称没有包含 vl、vision、omni 等明显标识，请打开此项。打开后，心理对话会把本轮上传的图片发送给上游大模型。"
+            />
+            <Form.Item name="visionEnabled" label="允许识别上传图片" valuePropName="checked">
+              <Switch />
+            </Form.Item>
+          </Card>
           <Card size="small" title="知识库增强 RAG" style={{ marginBottom: 16 }}>
             <Alert
               type="info"

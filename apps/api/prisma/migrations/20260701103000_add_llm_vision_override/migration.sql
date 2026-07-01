@@ -1,0 +1,1 @@
+ALTER TABLE "UserLlmConfig" ADD COLUMN "visionEnabled" BOOLEAN NOT NULL DEFAULT false;

@@ -39,13 +39,11 @@ export function AuthPage() {
   return (
     <main className="auth-screen">
       <section className="auth-intro">
-        <Typography.Title className="auth-brand">健康助手</Typography.Title>
-        <Typography.Paragraph className="auth-copy">
-          登录自己的账号后，健康记录、快照、对话和分诊历史都会按账号保存。
-        </Typography.Paragraph>
+        <Typography.Title className="auth-brand">HealthFlow：智慧健康助手</Typography.Title>
       </section>
       <Card className="auth-card">
         <Tabs
+          className="auth-tabs"
           activeKey={mode}
           onChange={(key) => {
             setMode(key as 'login' | 'register');
@@ -58,19 +56,19 @@ export function AuthPage() {
         />
         {error ? <Alert type="error" showIcon message={error} className="auth-alert" /> : null}
         {mode === 'login' ? (
-          <Form layout="vertical" onFinish={handleLogin} requiredMark={false}>
+          <Form className="auth-form" layout="vertical" onFinish={handleLogin} requiredMark={false}>
             <Form.Item name="email" label="邮箱" rules={[{ required: true, type: 'email', message: '请输入有效邮箱' }]}>
               <Input prefix={<MailOutlined />} autoComplete="email" placeholder="you@example.com" />
             </Form.Item>
             <Form.Item name="password" label="密码" rules={[{ required: true, min: 8, message: '密码至少 8 位' }]}>
               <Input.Password prefix={<LockOutlined />} autoComplete="current-password" placeholder="输入密码" />
             </Form.Item>
-            <Button type="primary" htmlType="submit" loading={loading} block>
+            <Button className="auth-submit" type="primary" htmlType="submit" loading={loading} block>
               登录
             </Button>
           </Form>
         ) : (
-          <Form layout="vertical" onFinish={handleRegister} requiredMark={false}>
+          <Form className="auth-form" layout="vertical" onFinish={handleRegister} requiredMark={false}>
             <Form.Item name="displayName" label="昵称">
               <Input prefix={<UserOutlined />} autoComplete="name" placeholder="给自己一个容易认出的名字" />
             </Form.Item>
@@ -80,7 +78,7 @@ export function AuthPage() {
             <Form.Item name="password" label="密码" rules={[{ required: true, min: 8, message: '密码至少 8 位' }]}>
               <Input.Password prefix={<LockOutlined />} autoComplete="new-password" placeholder="至少 8 位密码" />
             </Form.Item>
-            <Button type="primary" htmlType="submit" loading={loading} block>
+            <Button className="auth-submit" type="primary" htmlType="submit" loading={loading} block>
               创建账号
             </Button>
           </Form>

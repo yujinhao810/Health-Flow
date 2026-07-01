@@ -22,6 +22,9 @@ export type ChatAttachment = {
   sizeBytes: number;
   purpose: 'chat_attachment' | 'knowledge_source';
   status: 'pending' | 'ready' | 'failed';
+  documentId?: string;
+  chunkCount?: number;
+  hasExtractedText?: boolean;
   contentUrl?: string;
   createdAt: string;
 };

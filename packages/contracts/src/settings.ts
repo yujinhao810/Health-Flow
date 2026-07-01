@@ -171,7 +171,7 @@ export const LLM_PROVIDER_METADATA = {
     baseUrlEnv: 'QWEN_BASE_URL',
     defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     defaultModel: 'qwen-max',
-    models: ['qwen-max', 'qwen-plus', 'qwen-turbo', 'qwen-coder-plus'],
+    models: ['qwen-max', 'qwen-vl-max', 'qwen2.5-vl-72b-instruct', 'qwen-plus', 'qwen-turbo', 'qwen-coder-plus'],
   },
   zhipu: {
     id: 'zhipu',
@@ -241,6 +241,7 @@ export const llmConfigSchema = z.object({
   baseUrl: z.string().url().optional().or(z.literal('')),
   ragEnabled: z.boolean().optional(),
   ragTopK: z.coerce.number().int().min(1).max(10).optional(),
+  visionEnabled: z.boolean().optional(),
 });
 
 export type LlmConfigInput = z.infer<typeof llmConfigSchema>;
@@ -252,6 +253,7 @@ export type PublicLlmConfig = {
   baseUrl?: string;
   ragEnabled?: boolean;
   ragTopK?: number;
+  visionEnabled?: boolean;
   updatedAt?: string;
 };
 

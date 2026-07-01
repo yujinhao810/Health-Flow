@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, Param, Post, Res, UploadedFile, UseGuards, UseInterceptors, Body } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { createReadStream } from 'fs';
@@ -20,6 +20,11 @@ export class UploadsController {
     @Body('purpose') purpose: 'chat_attachment' | 'knowledge_source',
   ) {
     return this.uploads.create(user, file, purpose);
+  }
+
+  @Get()
+  list(@CurrentUser() user: AuthUser, @Query('purpose') purpose?: 'chat_attachment' | 'knowledge_source') {
+    return this.uploads.list(user, purpose);
   }
 
   @Get(':id')

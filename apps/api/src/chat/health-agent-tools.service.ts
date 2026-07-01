@@ -118,6 +118,15 @@ export class HealthAgentToolsService {
     return hasExplicitWriteIntent(userInput);
   }
 
+  shouldNeedToolUse(userInput: string) {
+    return (
+      hasExplicitWriteIntent(userInput) ||
+      /健康记录|睡眠记录|心情记录|运动记录|就医记录|快照|趋势|统计|生成.*计划|制定.*计划|读取|查询/.test(userInput) ||
+      /(最近|近[一二三四五六七八九十0-9]+天|这周|本周|上周|今天|昨天|过去|历史).*(睡眠|心情|情绪|运动|就医|健康)/.test(userInput) ||
+      /(睡眠|心情|情绪|运动|就医|健康).*(怎么样|如何|变化|趋势|记录|统计|几|多少|多久)/.test(userInput)
+    );
+  }
+
   async tryCreateRecordFromUserText(user: AuthUser, userInput: string): Promise<(HealthAgentToolResult & { assistantText: string }) | null> {
     const parsed = parseRecordFromText(userInput);
     if (!parsed) return null;

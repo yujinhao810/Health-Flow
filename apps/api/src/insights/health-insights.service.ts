@@ -24,44 +24,74 @@ export class HealthInsightsService {
     const built = await this.memory.build(user);
     await this.memory.refreshPersistentMemory(user);
     const candidates = buildInsightCandidates(built.memory);
-    const created = [];
+    const now = new Date();
+    const activeTypes = candidates.map((candidate) => candidate.type);
+
+    await this.prisma.healthInsight.updateMany({
+      where: {
+        userId: user.id,
+        status: { not: 'dismissed' },
+        ...(activeTypes.length ? { type: { notIn: activeTypes } } : {}),
+      },
+      data: { status: 'dismissed', dismissedAt: now },
+    });
 
     for (const candidate of candidates) {
-      const recentDuplicate = await this.prisma.healthInsight.findFirst({
+      const recentlyDismissed = await this.prisma.healthInsight.findFirst({
         where: {
           userId: user.id,
           type: candidate.type,
-          generatedAt: { gte: daysAgo(new Date(), 3) },
-          status: { not: 'dismissed' },
+          status: 'dismissed',
+          dismissedAt: { gte: daysAgo(now, 3) },
         },
       });
-      if (recentDuplicate) continue;
+      if (recentlyDismissed) continue;
 
-      created.push(
-        await this.prisma.healthInsight.create({
+      const existing = await this.prisma.healthInsight.findFirst({
+        where: {
+          userId: user.id,
+          type: candidate.type,
+          status: { not: 'dismissed' },
+        },
+        orderBy: { generatedAt: 'desc' },
+      });
+
+      if (existing) {
+        const changed = insightChanged(existing, candidate);
+        await this.prisma.healthInsight.update({
+          where: { id: existing.id },
           data: {
-            userId: user.id,
-            type: candidate.type,
             severity: candidate.severity,
             title: candidate.title,
             summary: candidate.summary,
             evidence: candidate.evidence as Prisma.InputJsonValue,
             recommendation: candidate.recommendation,
+            generatedAt: now,
+            status: changed ? 'new' : existing.status,
+            readAt: changed ? null : existing.readAt,
           },
-        }),
-      );
+        });
+        continue;
+      }
+
+      await this.prisma.healthInsight.create({
+        data: {
+          userId: user.id,
+          type: candidate.type,
+          severity: candidate.severity,
+          title: candidate.title,
+          summary: candidate.summary,
+          evidence: candidate.evidence as Prisma.InputJsonValue,
+          recommendation: candidate.recommendation,
+        },
+      });
     }
 
-    return created;
+    return this.findActive(user);
   }
 
   async list(user: AuthUser) {
-    await this.refresh(user);
-    return this.prisma.healthInsight.findMany({
-      where: { userId: user.id, status: { not: 'dismissed' } },
-      orderBy: [{ status: 'asc' }, { generatedAt: 'desc' }],
-      take: 20,
-    });
+    return this.refresh(user);
   }
 
   async markRead(user: AuthUser, id: string) {
@@ -77,6 +107,40 @@ export class HealthInsightsService {
       data: { status: 'dismissed', dismissedAt: new Date() },
     });
   }
+
+  private findActive(user: AuthUser) {
+    return this.prisma.healthInsight.findMany({
+      where: { userId: user.id, status: { not: 'dismissed' } },
+      orderBy: [{ status: 'asc' }, { generatedAt: 'desc' }],
+      take: 20,
+    });
+  }
+}
+
+function insightChanged(
+  existing: {
+    severity: string;
+    title: string;
+    summary: string;
+    evidence: Prisma.JsonValue;
+    recommendation: string;
+  },
+  candidate: CandidateInsight,
+) {
+  return (
+    existing.severity !== candidate.severity ||
+    existing.title !== candidate.title ||
+    existing.summary !== candidate.summary ||
+    existing.recommendation !== candidate.recommendation ||
+    stableJson(existing.evidence) !== stableJson(candidate.evidence)
+  );
+}
+
+function stableJson(value: unknown) {
+  return JSON.stringify(value, (_key, input) => {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return input;
+    return Object.fromEntries(Object.entries(input).sort(([left], [right]) => left.localeCompare(right)));
+  });
 }
 
 function buildInsightCandidates(memory: { windows: Record<string, unknown>; trends: Record<string, unknown> }): CandidateInsight[] {
@@ -128,7 +192,63 @@ function buildInsightCandidates(memory: { windows: Record<string, unknown>; tren
     });
   }
 
+  if (insights.length === 0 && hasRecentData(last30)) {
+    insights.push({
+      type: 'health_stable',
+      severity: 'info',
+      title: '近期状态整体平稳',
+      summary: buildStableSummary(last30),
+      evidence: { last30, trends },
+      recommendation: '继续保持当前记录节奏。若之后出现睡眠、情绪、运动或就医频率的明显变化，主动洞察会在这里提醒你。',
+    });
+  }
+
   return insights;
+}
+
+function hasRecentData(
+  last30:
+    | {
+        sleepAverageHours?: number;
+        moodAverage?: number;
+        exerciseActiveDays?: number;
+        exerciseTotalMinutes?: number;
+        medicalVisits?: number;
+      }
+    | undefined,
+): last30 is {
+  sleepAverageHours?: number;
+  moodAverage?: number;
+  exerciseActiveDays?: number;
+  exerciseTotalMinutes?: number;
+  medicalVisits?: number;
+} {
+  return Boolean(
+    last30 &&
+      (last30.sleepAverageHours !== undefined ||
+        last30.moodAverage !== undefined ||
+        (last30.exerciseActiveDays ?? 0) > 0 ||
+        (last30.medicalVisits ?? 0) > 0),
+  );
+}
+
+function buildStableSummary(last30: {
+  sleepAverageHours?: number;
+  moodAverage?: number;
+  exerciseActiveDays?: number;
+  exerciseTotalMinutes?: number;
+  medicalVisits?: number;
+}) {
+  const parts = [
+    last30.sleepAverageHours !== undefined ? `近 30 天平均睡眠 ${last30.sleepAverageHours} 小时` : undefined,
+    last30.moodAverage !== undefined ? `平均心情 ${last30.moodAverage}/10` : undefined,
+    (last30.exerciseActiveDays ?? 0) > 0
+      ? `运动活跃 ${last30.exerciseActiveDays ?? 0} 天、累计 ${last30.exerciseTotalMinutes ?? 0} 分钟`
+      : undefined,
+    (last30.medicalVisits ?? 0) > 0 ? `就医/咨询记录 ${last30.medicalVisits} 条` : undefined,
+  ].filter(Boolean);
+
+  return `${parts.join('；')}。目前没有触发需要额外提醒的下降或偏离信号。`;
 }
 
 function daysAgo(now: Date, days: number) {

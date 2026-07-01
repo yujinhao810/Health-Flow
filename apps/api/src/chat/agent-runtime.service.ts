@@ -43,8 +43,17 @@ export class AgentRuntimeService {
       return;
     }
 
+    const needsToolUse = this.tools.shouldNeedToolUse(request.userInput);
+
     if (!this.llm.supportsToolUse(request.config)) {
-      yield { type: 'warning', message: '当前模型提供商暂不支持健康工具调用，本轮将使用普通聊天模式。' };
+      if (needsToolUse) {
+        yield { type: 'warning', message: '当前模型提供商暂不支持健康工具调用，本轮将使用普通聊天模式。' };
+      }
+      yield* this.runPlainChat(request);
+      return;
+    }
+
+    if (!needsToolUse) {
       yield* this.runPlainChat(request);
       return;
     }
@@ -58,34 +67,41 @@ export class AgentRuntimeService {
       let finalMessage: Extract<LlmToolStreamEvent, { type: 'message' }> | undefined;
 
       const forceRecordCreate = iteration === 0 && this.tools.shouldForceRecordCreate(request.userInput);
-      for await (const event of this.llm.streamChatWithTools({
-        config: request.config,
-        system: request.system,
-        messages,
-        tools: this.tools.getTools(),
-        toolChoice: forceRecordCreate ? { type: 'tool', name: 'health_record_create' } : { type: 'auto' },
-        signal: request.signal,
-      })) {
-        if (event.type === 'delta') {
-          fullText += event.text;
-          yield { type: 'assistant_delta', text: event.text };
-        } else if (event.type === 'tool_call') {
-          yield {
-            type: 'tool_call',
-            id: event.id,
-            name: event.name,
-            title: this.tools.getTitle(event.name),
-            inputPreview: previewInput(event.input),
-          };
-        } else if (event.type === 'usage') {
-          totalInputTokens += event.inputTokens ?? 0;
-          totalOutputTokens += event.outputTokens ?? 0;
-          yield { type: 'usage', inputTokens: event.inputTokens, outputTokens: event.outputTokens };
-        } else if (event.type === 'message') {
-          finalMessage = event;
-          totalInputTokens += event.inputTokens ?? 0;
-          totalOutputTokens += event.outputTokens ?? 0;
+      try {
+        for await (const event of this.llm.streamChatWithTools({
+          config: request.config,
+          system: request.system,
+          messages,
+          tools: this.tools.getTools(),
+          toolChoice: forceRecordCreate ? { type: 'tool', name: 'health_record_create' } : { type: 'auto' },
+          signal: request.signal,
+        })) {
+          if (event.type === 'delta') {
+            fullText += event.text;
+            yield { type: 'assistant_delta', text: event.text };
+          } else if (event.type === 'tool_call') {
+            yield {
+              type: 'tool_call',
+              id: event.id,
+              name: event.name,
+              title: this.tools.getTitle(event.name),
+              inputPreview: previewInput(event.input),
+            };
+          } else if (event.type === 'usage') {
+            totalInputTokens += event.inputTokens ?? 0;
+            totalOutputTokens += event.outputTokens ?? 0;
+            yield { type: 'usage', inputTokens: event.inputTokens, outputTokens: event.outputTokens };
+          } else if (event.type === 'message') {
+            finalMessage = event;
+            totalInputTokens += event.inputTokens ?? 0;
+            totalOutputTokens += event.outputTokens ?? 0;
+          }
         }
+      } catch (error) {
+        if (!isToolUseUnsupportedError(error)) throw error;
+        yield { type: 'warning', message: '当前模型不接受工具调用参数，本轮已自动切换为普通聊天模式。' };
+        yield* this.runPlainChat(request);
+        return;
       }
 
       if (!finalMessage) {
@@ -180,4 +196,9 @@ export class AgentRuntimeService {
 function previewInput(input: unknown) {
   const raw = JSON.stringify(input ?? {});
   return raw.length > 220 ? `${raw.slice(0, 220)}...` : raw;
+}
+
+function isToolUseUnsupportedError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /HTTP 400|tool|tools|tool_choice|function calling|functions|unsupported|不支持工具调用/i.test(message);
 }

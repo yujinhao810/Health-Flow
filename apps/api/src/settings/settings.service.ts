@@ -37,8 +37,12 @@ export class SettingsService {
         model: saved.model,
         apiKey: saved.encryptedApiKey ? this.decryptSecret(saved.encryptedApiKey) : this.getProviderApiKey(provider),
         baseUrl: this.resolveBaseUrl(provider, saved.baseUrl ?? undefined),
+        embeddingApiKey: this.config.get<string>('EMBEDDING_API_KEY'),
+        embeddingBaseUrl: this.config.get<string>('EMBEDDING_BASE_URL'),
+        embeddingModel: this.config.get<string>('EMBEDDING_MODEL'),
         ragEnabled: saved.ragEnabled,
         ragTopK: saved.ragTopK,
+        visionEnabled: saved.visionEnabled,
       };
     }
 
@@ -48,8 +52,12 @@ export class SettingsService {
       model: this.config.get<string>('LLM_MODEL') || this.getDefaultModel(provider),
       apiKey: this.getProviderApiKey(provider),
       baseUrl: this.resolveBaseUrl(provider),
+      embeddingApiKey: this.config.get<string>('EMBEDDING_API_KEY'),
+      embeddingBaseUrl: this.config.get<string>('EMBEDDING_BASE_URL'),
+      embeddingModel: this.config.get<string>('EMBEDDING_MODEL'),
       ragEnabled: true,
       ragTopK: 5,
+      visionEnabled: this.config.get<string>('LLM_VISION_ENABLED') === 'true',
     };
   }
 
@@ -69,6 +77,7 @@ export class SettingsService {
         baseUrl: this.resolveBaseUrl(provider, saved.baseUrl ?? undefined),
         ragEnabled: saved.ragEnabled,
         ragTopK: saved.ragTopK,
+        visionEnabled: saved.visionEnabled,
         updatedAt: saved.updatedAt.toISOString(),
       };
     }
@@ -81,6 +90,7 @@ export class SettingsService {
       baseUrl: config.baseUrl,
       ragEnabled: config.ragEnabled ?? true,
       ragTopK: config.ragTopK ?? 5,
+      visionEnabled: config.visionEnabled ?? false,
     };
   }
 
@@ -89,6 +99,9 @@ export class SettingsService {
       ...config,
       apiKey: config.apiKey ?? this.getProviderApiKey(config.provider),
       baseUrl: this.resolveBaseUrl(config.provider, config.baseUrl),
+      embeddingApiKey: config.embeddingApiKey ?? this.config.get<string>('EMBEDDING_API_KEY'),
+      embeddingBaseUrl: config.embeddingBaseUrl ?? this.config.get<string>('EMBEDDING_BASE_URL'),
+      embeddingModel: config.embeddingModel ?? this.config.get<string>('EMBEDDING_MODEL'),
     };
   }
 
@@ -125,6 +138,7 @@ export class SettingsService {
         baseUrl: normalizeBaseUrl(config.baseUrl),
         ragEnabled: config.ragEnabled ?? current?.ragEnabled ?? true,
         ragTopK: config.ragTopK ?? current?.ragTopK ?? 5,
+        visionEnabled: config.visionEnabled ?? current?.visionEnabled ?? false,
         enabled: true,
       },
     });

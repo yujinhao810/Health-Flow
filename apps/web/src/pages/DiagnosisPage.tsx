@@ -15,10 +15,12 @@ export function DiagnosisPage() {
       const session = await create.mutateAsync(input);
       if (session.integratedOutput?.mustSeekImmediateCare) {
         message.warning('已识别到需要立即就医的风险信号，请优先处理安全问题。');
+      } else if (session.integratedOutput?.needsFollowUp) {
+        message.warning('会诊已完成初步仲裁，但需要补充关键信息后再细化建议。');
       } else if (session.generationStatus?.degraded) {
         message.warning('辅助分诊建议已生成，但部分内容不完整，请查看页面提示。');
       } else {
-        message.success('辅助分诊建议已生成');
+        message.success('会诊式辅助分诊建议已生成');
       }
       navigate(`/diagnosis/${session.id}`);
     } catch (error) {
@@ -40,7 +42,7 @@ export function DiagnosisPage() {
       <div className="page-intro">
         <Typography.Title level={2}>中西医结合辅助分诊</Typography.Title>
         <Typography.Paragraph type="secondary">
-          并行参考西医循证分诊与中医辨证思路，生成低风险调理建议和就医提示。填写完成后将在独立页面查看汇总建议，避免信息拥挤。
+          先由西医与中医 Agent 初评，再相互质询，最后由决策者 Agent 按安全优先原则仲裁。信息不足时会先提示需要补充的问题。
         </Typography.Paragraph>
       </div>
       <Alert

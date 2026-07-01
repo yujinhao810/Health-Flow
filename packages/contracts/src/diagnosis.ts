@@ -134,6 +134,97 @@ export const tcmAssessmentSchema = z.object({
 });
 export type TcmAssessment = z.infer<typeof tcmAssessmentSchema>;
 
+const clinicalPrioritySchema = z.enum(['immediate', 'soon', 'routine']);
+
+export const westernReviewOfTcmSchema = z.object({
+  referenceable: z
+    .array(
+      z.object({
+        point: z.string(),
+        reason: z.string(),
+      }),
+    )
+    .default([]),
+  potentiallyMisleading: z
+    .array(
+      z.object({
+        point: z.string(),
+        risk: z.string(),
+        saferFraming: z.string(),
+      }),
+    )
+    .default([]),
+  checksNeeded: z
+    .array(
+      z.object({
+        issue: z.string(),
+        recommendedCheck: z.string(),
+        timing: clinicalPrioritySchema,
+        reason: z.string(),
+      }),
+    )
+    .default([]),
+});
+export type WesternReviewOfTcm = z.infer<typeof westernReviewOfTcmSchema>;
+
+export const tcmReviewOfWesternSchema = z.object({
+  needsMoreTcmInfo: z
+    .array(
+      z.object({
+        patternOrIssue: z.string(),
+        missingInfo: z.array(z.string()).default([]),
+        reason: z.string(),
+      }),
+    )
+    .default([]),
+  safetyBoundaries: z
+    .array(
+      z.object({
+        westernRedFlagOrConcern: z.string(),
+        tcmAdjustment: z.string(),
+        reason: z.string(),
+      }),
+    )
+    .default([]),
+  conflicts: z
+    .array(
+      z.object({
+        topic: z.string(),
+        westernView: z.string(),
+        tcmView: z.string(),
+        concern: z.string(),
+      }),
+    )
+    .default([]),
+});
+export type TcmReviewOfWestern = z.infer<typeof tcmReviewOfWesternSchema>;
+
+export const crossExaminationSchema = z.object({
+  westernOnTcm: westernReviewOfTcmSchema.optional().nullable(),
+  tcmOnWestern: tcmReviewOfWesternSchema.optional().nullable(),
+});
+export type CrossExamination = z.infer<typeof crossExaminationSchema>;
+
+export const integratorDecisionSchema = z.object({
+  claim: z.string(),
+  source: z.enum(['consensus', 'western_only', 'tcm_only', 'conflict', 'safety_rule']),
+  decision: z.enum(['adopted', 'partially_adopted', 'not_adopted', 'needs_follow_up']),
+  reason: z.string(),
+  safetyImpact: z.string(),
+});
+export type IntegratorDecision = z.infer<typeof integratorDecisionSchema>;
+
+export const arbitrationDecisionSchema = z.object({
+  topic: z.string(),
+  westernView: z.string(),
+  tcmView: z.string(),
+  resolution: z.enum(['adopt_western', 'adopt_tcm', 'combine', 'reject_both', 'ask_follow_up']),
+  adoptedFrom: z.enum(['western', 'tcm', 'both', 'neither', 'pending_more_info']),
+  reason: z.string(),
+  safetyPriority: z.boolean(),
+});
+export type ArbitrationDecision = z.infer<typeof arbitrationDecisionSchema>;
+
 export const integratedDiagnosisResultSchema = z.object({
   safetyLevel: diagnosisSafetyLevelSchema,
   mustSeekImmediateCare: z.boolean(),
@@ -142,6 +233,11 @@ export const integratedDiagnosisResultSchema = z.object({
   westernPerspective: z.string(),
   tcmPerspective: z.string(),
   conflictResolution: z.array(z.string()).default([]),
+  decisionMatrix: z.array(integratorDecisionSchema).default([]),
+  arbitrationDecisions: z.array(arbitrationDecisionSchema).default([]),
+  needsFollowUp: z.boolean().default(false),
+  followUpReason: z.string().default(''),
+  requiredFollowUpQuestions: z.array(z.string()).default([]),
   integrativeRecommendations: z.array(
     z.object({
       category: z.enum(['medical_care', 'monitoring', 'lifestyle', 'tcm_regulation', 'avoidance']),
@@ -173,12 +269,25 @@ export const generationStatusSchema = z.object({
   overall: generationOverallStatusSchema,
   western: generationStepStatusSchema,
   tcm: generationStepStatusSchema,
+  westernCross: generationStepStatusSchema.optional(),
+  tcmCross: generationStepStatusSchema.optional(),
   integrated: generationStepStatusSchema,
   degraded: z.boolean(),
   warnings: z.array(z.string()).default([]),
   coordinator: z
     .object({
       strategy: z.string(),
+      events: z
+        .array(
+          z.object({
+            at: z.string(),
+            type: z.string(),
+            title: z.string(),
+            status: z.string().optional(),
+            detail: z.string().optional(),
+          }),
+        )
+        .default([]),
       steps: z.array(
         z.object({
           name: z.string(),
@@ -189,6 +298,7 @@ export const generationStatusSchema = z.object({
         }),
       ),
       arbitration: z.array(z.string()).default([]),
+      crossExamination: crossExaminationSchema.optional(),
     })
     .optional(),
 });
@@ -325,6 +435,103 @@ export const tcmAssessmentJsonSchema = {
   ],
 } as const;
 
+const clinicalPriorityJsonSchema = { type: 'string', enum: ['immediate', 'soon', 'routine'] } as const;
+
+export const westernReviewOfTcmJsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    referenceable: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          point: { type: 'string' },
+          reason: { type: 'string' },
+        },
+        required: ['point', 'reason'],
+      },
+    },
+    potentiallyMisleading: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          point: { type: 'string' },
+          risk: { type: 'string' },
+          saferFraming: { type: 'string' },
+        },
+        required: ['point', 'risk', 'saferFraming'],
+      },
+    },
+    checksNeeded: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          issue: { type: 'string' },
+          recommendedCheck: { type: 'string' },
+          timing: clinicalPriorityJsonSchema,
+          reason: { type: 'string' },
+        },
+        required: ['issue', 'recommendedCheck', 'timing', 'reason'],
+      },
+    },
+  },
+  required: ['referenceable', 'potentiallyMisleading', 'checksNeeded'],
+} as const;
+
+export const tcmReviewOfWesternJsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    needsMoreTcmInfo: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          patternOrIssue: { type: 'string' },
+          missingInfo: { type: 'array', items: { type: 'string' } },
+          reason: { type: 'string' },
+        },
+        required: ['patternOrIssue', 'missingInfo', 'reason'],
+      },
+    },
+    safetyBoundaries: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          westernRedFlagOrConcern: { type: 'string' },
+          tcmAdjustment: { type: 'string' },
+          reason: { type: 'string' },
+        },
+        required: ['westernRedFlagOrConcern', 'tcmAdjustment', 'reason'],
+      },
+    },
+    conflicts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          topic: { type: 'string' },
+          westernView: { type: 'string' },
+          tcmView: { type: 'string' },
+          concern: { type: 'string' },
+        },
+        required: ['topic', 'westernView', 'tcmView', 'concern'],
+      },
+    },
+  },
+  required: ['needsMoreTcmInfo', 'safetyBoundaries', 'conflicts'],
+} as const;
+
 export const integratedDiagnosisResultJsonSchema = {
   type: 'object',
   additionalProperties: false,
@@ -336,6 +543,41 @@ export const integratedDiagnosisResultJsonSchema = {
     westernPerspective: { type: 'string' },
     tcmPerspective: { type: 'string' },
     conflictResolution: { type: 'array', items: { type: 'string' } },
+    decisionMatrix: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          claim: { type: 'string' },
+          source: { type: 'string', enum: ['consensus', 'western_only', 'tcm_only', 'conflict', 'safety_rule'] },
+          decision: { type: 'string', enum: ['adopted', 'partially_adopted', 'not_adopted', 'needs_follow_up'] },
+          reason: { type: 'string' },
+          safetyImpact: { type: 'string' },
+        },
+        required: ['claim', 'source', 'decision', 'reason', 'safetyImpact'],
+      },
+    },
+    arbitrationDecisions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          topic: { type: 'string' },
+          westernView: { type: 'string' },
+          tcmView: { type: 'string' },
+          resolution: { type: 'string', enum: ['adopt_western', 'adopt_tcm', 'combine', 'reject_both', 'ask_follow_up'] },
+          adoptedFrom: { type: 'string', enum: ['western', 'tcm', 'both', 'neither', 'pending_more_info'] },
+          reason: { type: 'string' },
+          safetyPriority: { type: 'boolean' },
+        },
+        required: ['topic', 'westernView', 'tcmView', 'resolution', 'adoptedFrom', 'reason', 'safetyPriority'],
+      },
+    },
+    needsFollowUp: { type: 'boolean' },
+    followUpReason: { type: 'string' },
+    requiredFollowUpQuestions: { type: 'array', items: { type: 'string' } },
     integrativeRecommendations: {
       type: 'array',
       items: {
@@ -375,6 +617,11 @@ export const integratedDiagnosisResultJsonSchema = {
     'westernPerspective',
     'tcmPerspective',
     'conflictResolution',
+    'decisionMatrix',
+    'arbitrationDecisions',
+    'needsFollowUp',
+    'followUpReason',
+    'requiredFollowUpQuestions',
     'integrativeRecommendations',
     'followUpQuestions',
     'redFlagCoverage',

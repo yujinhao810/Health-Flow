@@ -24,6 +24,20 @@ if exist "C:\nvm4w\nodejs\node.exe" (
   set "NODE_EXE=node"
 )
 
+echo Preparing HealthFlow database ...
+cd /d "%~dp0apps\api"
+"%NODE_EXE%" scripts\ensure-prisma-client.mjs
+if errorlevel 1 (
+  echo Failed to prepare Prisma Client.
+  exit /b 1
+)
+"%NODE_EXE%" scripts\ensure-prisma-migrations.mjs
+if errorlevel 1 (
+  echo Failed to apply database migrations.
+  exit /b 1
+)
+cd /d "%~dp0"
+
 echo Starting HealthFlow API on http://127.0.0.1:3001 ...
 start "HealthFlow API 3001" /min cmd /c ""%NODE_EXE%" apps\api\dist\main.js 1>"%~dp0run-logs\api3001.out.log" 2>"%~dp0run-logs\api3001.err.log""
 

@@ -6,7 +6,14 @@ export function useDiagnosis() {
   const history = useQuery({ queryKey: ['diagnoses'], queryFn: listDiagnoses });
   const create = useMutation({
     mutationFn: (input: DiagnosisInput) => createDiagnosis(input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['diagnoses'] }),
+    onSuccess: (session) => {
+      queryClient.setQueryData(['diagnoses'], (current: Awaited<ReturnType<typeof listDiagnoses>> | undefined) => {
+        const withoutDuplicate = (current ?? []).filter((item) => item.id !== session.id);
+        return [session, ...withoutDuplicate];
+      });
+      queryClient.setQueryData(['diagnosis', session.id], session);
+      queryClient.invalidateQueries({ queryKey: ['diagnoses'] });
+    },
   });
   const remove = useMutation({
     mutationFn: deleteDiagnosis,

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { RagCitation } from '@health/shared';
 import type { AuthUser } from '../auth/auth.types';
 import { RagService } from '../knowledge/rag.service';
+import { LlmService } from '../llm/llm.provider';
 import { HEALTH_ANALYSIS_SYSTEM } from '../llm/prompts/analysis.system';
 import { PSYCHOLOGICAL_ASSISTANT_SYSTEM } from '../llm/prompts/assistant.system';
 import { HealthMemoryService } from '../memory/health-memory.service';
@@ -19,6 +20,7 @@ export class ChatContextService {
     private readonly rag: RagService,
     private readonly uploads: UploadsService,
     private readonly memory: HealthMemoryService,
+    private readonly llm: LlmService,
   ) {}
 
   async buildContext(user: AuthUser, threadId: string, options?: { userInput?: string; ragEnabled?: boolean; attachmentIds?: string[] }) {
@@ -39,9 +41,21 @@ export class ChatContextService {
       : '近期健康快照：暂无。';
 
     const effectiveRagEnabled = options?.ragEnabled ?? config.ragEnabled ?? true;
-    const citations = effectiveRagEnabled ? await this.rag.retrieve(options?.userInput ?? '', { topK: config.ragTopK ?? 5 }) : [];
+    const citations = effectiveRagEnabled
+      ? await this.rag.retrieve(options?.userInput ?? '', { topK: config.ragTopK ?? 5, user, config })
+      : [];
     const knowledgeContext = buildKnowledgeContext(citations);
-    const attachmentContext = this.uploads.buildAttachmentContext(files);
+    const visionEnabled = this.llm.supportsVision(config);
+    const attachmentContext = this.uploads.buildAttachmentContext(files, { visionEnabled });
+    const threadMessages = await Promise.all(
+      thread.messages.slice(-12).map(async (message, index, messages) => ({
+        role: message.role,
+        content:
+          index === messages.length - 1 && message.role === 'user'
+            ? await this.uploads.buildUserMessageContent(message.content, files, { visionEnabled })
+            : message.content,
+      })),
+    );
 
     return {
       config,
@@ -62,10 +76,7 @@ export class ChatContextService {
       ragEnabled: effectiveRagEnabled,
       citations,
       attachments: files.map((file) => this.uploads.toPublicAttachment(file)),
-      messages: thread.messages.slice(-12).map((message) => ({
-        role: message.role,
-        content: message.content,
-      })),
+      messages: threadMessages,
     };
   }
 }

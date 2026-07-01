@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { LlmProvider, LlmStreamRequest, LlmStreamEvent, LlmStructuredRequest } from '../llm.types';
+import { LlmEmbeddingRequest, LlmProvider, LlmStreamRequest, LlmStreamEvent, LlmStructuredRequest } from '../llm.types';
 
 @Injectable()
 export class MockProvider implements LlmProvider {
   name = 'mock' as const;
-  capabilities = { supportsToolUse: false };
+  capabilities = { supportsToolUse: false, supportsEmbeddings: true };
 
   async validate() {
     return { valid: true, message: 'Mock provider 可用' };
@@ -28,9 +28,71 @@ export class MockProvider implements LlmProvider {
     const parsed = buildMockStructured(request.schemaName) as T;
     return { parsed, rawText: JSON.stringify(parsed), usage: { inputTokens: 0, outputTokens: JSON.stringify(parsed).length } };
   }
+
+  async embedTexts(request: LlmEmbeddingRequest) {
+    return {
+      vectors: request.texts.map((text) => localEmbedding(text)),
+      model: 'mock-local-hash-embedding',
+    };
+  }
+}
+
+function localEmbedding(text: string, dimensions = 384) {
+  const vector = Array.from({ length: dimensions }, () => 0);
+  const normalized = text.toLowerCase().replace(/\s+/g, ' ').trim();
+  const tokens = Array.from(new Set([...normalized.matchAll(/[\p{L}\p{N}]{2,}|[\u4e00-\u9fff]/gu)].map((match) => match[0])));
+
+  for (const token of tokens.length ? tokens : [normalized.slice(0, 120)]) {
+    const index = Math.abs(hash(token)) % dimensions;
+    vector[index] += 1;
+  }
+
+  const magnitude = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0)) || 1;
+  return vector.map((value) => value / magnitude);
+}
+
+function hash(value: string) {
+  let result = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    result ^= value.charCodeAt(index);
+    result = Math.imul(result, 16777619);
+  }
+  return result;
 }
 
 function buildMockStructured(schemaName: string) {
+  if (schemaName === 'western_review_of_tcm') {
+    return {
+      referenceable: [
+        { point: '规律作息和轻柔放松可作为低风险参考', reason: '这类建议通常不会替代医学评估，也有助于观察症状变化。' },
+      ],
+      potentiallyMisleading: [
+        {
+          point: '仅凭证候倾向就判断无需就医',
+          risk: '可能忽略急性加重、发热、胸痛、呼吸困难等需要医学评估的情况。',
+          saferFraming: '中医调养只能作为辅助，出现红旗或持续加重时优先线下就医。',
+        },
+      ],
+      checksNeeded: [
+        { issue: '症状持续或加重', recommendedCheck: '线下医生评估并记录体温、心率等基础体征', timing: 'routine', reason: '用于确认是否存在需要进一步检查的风险。' },
+      ],
+    };
+  }
+
+  if (schemaName === 'tcm_review_of_western') {
+    return {
+      needsMoreTcmInfo: [
+        { patternOrIssue: '气血与寒热倾向', missingInfo: ['舌色舌苔', '寒热偏好', '汗出和口渴', '二便情况'], reason: '缺少这些信息时不宜做明确证候判断。' },
+      ],
+      safetyBoundaries: [
+        { westernRedFlagOrConcern: '症状持续或出现红旗', tcmAdjustment: '调养建议保持低风险，不替代就医和检查。', reason: '安全优先于辨证调养。' },
+      ],
+      conflicts: [
+        { topic: '观察调养与线下评估优先级', westernView: '症状持续或加重时应线下评估。', tcmView: '可做低风险起居调养。', concern: '调养不能被理解为可以推迟就医。' },
+      ],
+    };
+  }
+
   if (schemaName.includes('western')) {
     return {
       urgency: 'routine',
@@ -81,6 +143,43 @@ function buildMockStructured(schemaName: string) {
     westernPerspective: '西医视角建议观察症状变化，必要时线下评估。',
     tcmPerspective: '中医视角可从作息、饮食、情志方面温和调养，并补充舌象脉象信息。',
     conflictResolution: ['若出现急症表现，以线下急诊和医学检查优先。'],
+    decisionMatrix: [
+      {
+        claim: '记录症状变化并关注红旗',
+        source: 'consensus',
+        decision: 'adopted',
+        reason: '两侧都认可先收集连续信息并保持安全边界。',
+        safetyImpact: '有助于发现需要线下评估的变化。',
+      },
+      {
+        claim: '用中医调养替代检查或就医',
+        source: 'safety_rule',
+        decision: 'not_adopted',
+        reason: '调养只能辅助，不应替代医学评估。',
+        safetyImpact: '避免延误风险。',
+      },
+      {
+        claim: '补充舌象脉象和病程信息',
+        source: 'consensus',
+        decision: 'needs_follow_up',
+        reason: '信息更完整后，会诊判断更稳妥。',
+        safetyImpact: '减少过度推断。',
+      },
+    ],
+    arbitrationDecisions: [
+      {
+        topic: '低风险调养与就医边界',
+        westernView: '持续或加重时优先线下评估。',
+        tcmView: '可进行低风险起居调养。',
+        resolution: 'combine',
+        adoptedFrom: 'both',
+        reason: '保留低风险调养，同时明确红旗和持续加重时就医优先。',
+        safetyPriority: true,
+      },
+    ],
+    needsFollowUp: true,
+    followUpReason: 'Mock 模式下信息较少，建议补充关键病程和舌脉观察后再细化会诊。',
+    requiredFollowUpQuestions: ['症状持续多久、严重程度多少？', '是否有发热、胸痛、呼吸困难或神经系统异常？', '舌色舌苔、寒热、汗出、口渴和二便情况如何？'],
     integrativeRecommendations: [
       { category: 'monitoring', title: '记录变化', details: '记录体温、心率、睡眠和症状变化。', priority: 'routine' },
       { category: 'lifestyle', title: '规律休息', details: '保证睡眠，避免过劳和刺激性饮食。', priority: 'routine' },

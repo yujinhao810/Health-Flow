@@ -9,7 +9,11 @@ export const envSchema = z.object({
   ENCRYPTION_KEY: z.string().min(16).optional(),
   LLM_PROVIDER: z.enum(LLM_PROVIDER_IDS).default('mock'),
   LLM_MODEL: z.string().optional(),
+  LLM_VISION_ENABLED: z.string().optional(),
   LLM_BASE_URL: z.string().optional(),
+  EMBEDDING_MODEL: z.string().optional(),
+  EMBEDDING_BASE_URL: z.string().optional(),
+  EMBEDDING_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_BASE_URL: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
@@ -45,7 +49,9 @@ export const envSchema = z.object({
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
   ALLOWED_UPLOAD_MIME_TYPES: z
     .string()
-    .default('image/png,image/jpeg,image/webp,text/plain,text/markdown,application/json,text/csv'),
+    .default(
+      'image/png,image/jpeg,image/webp,image/gif,image/bmp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,text/plain,text/markdown,application/json,text/csv',
+    ),
 });
 
 export type Env = z.infer<typeof envSchema>;

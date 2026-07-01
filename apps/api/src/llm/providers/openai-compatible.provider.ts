@@ -4,17 +4,55 @@ import https, { type RequestOptions } from 'node:https';
 import net from 'node:net';
 import tls from 'node:tls';
 import { Readable } from 'node:stream';
-import { LlmConfig, LlmProvider, LlmStreamEvent, LlmStreamRequest, LlmStructuredRequest } from '../llm.types';
+import {
+  LlmConfig,
+  LlmContentBlock,
+  LlmEmbeddingRequest,
+  LlmProvider,
+  LlmStreamEvent,
+  LlmStreamRequest,
+  LlmStructuredRequest,
+  LlmToolStreamEvent,
+  LlmToolStreamRequest,
+} from '../llm.types';
 
 type ChatCompletionChunk = {
-  choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }>;
+  choices?: Array<{
+    delta?: {
+      content?: string;
+      reasoning_content?: string;
+      tool_calls?: Array<{
+        index?: number;
+        id?: string;
+        type?: string;
+        function?: { name?: string; arguments?: string };
+      }>;
+    };
+    finish_reason?: string | null;
+  }>;
   usage?: { prompt_tokens?: number; completion_tokens?: number };
+};
+
+type EmbeddingResponse = {
+  data?: Array<{ index?: number; embedding?: number[] }>;
+  model?: string;
+};
+
+type OpenAiChatMessage = {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content?: string | null | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
+  tool_call_id?: string;
+  tool_calls?: Array<{
+    id: string;
+    type: 'function';
+    function: { name: string; arguments: string };
+  }>;
 };
 
 @Injectable()
 export class OpenAiCompatibleProvider implements LlmProvider {
   name = 'openai' as const;
-  capabilities = { supportsToolUse: false };
+  capabilities = { supportsToolUse: true, supportsEmbeddings: true };
 
   async validate(config: LlmConfig) {
     try {
@@ -42,18 +80,13 @@ export class OpenAiCompatibleProvider implements LlmProvider {
   async *streamChat(request: LlmStreamRequest): AsyncIterable<LlmStreamEvent> {
     const response = await this.fetchChatCompletions(
       request.config,
-      {
-        model: request.config.model,
-        stream: true,
-        messages: [
-          ...(request.system ? [{ role: 'system', content: request.system }] : []),
-          ...request.messages
-            .filter((message) => message.role !== 'system')
-            .map((message) => ({ role: message.role, content: message.content })),
-        ],
-      },
-      request.signal,
-    );
+        {
+          model: request.config.model,
+          stream: true,
+          messages: toOpenAiMessages(request.system, request.messages),
+        },
+        request.signal,
+      );
 
     if (!response.ok) {
       throw new Error(await formatHttpError(response));
@@ -112,12 +145,148 @@ export class OpenAiCompatibleProvider implements LlmProvider {
     yield { type: 'done', fullText };
   }
 
+  async *streamChatWithTools(request: LlmToolStreamRequest): AsyncIterable<LlmToolStreamEvent> {
+    const response = await this.fetchChatCompletions(
+      request.config,
+      {
+        model: request.config.model,
+        stream: true,
+        messages: toOpenAiMessages(request.system, request.messages),
+        tools: request.tools.map((tool) => ({
+          type: 'function',
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.inputSchema,
+            strict: tool.strict ?? false,
+          },
+        })),
+        tool_choice: toOpenAiToolChoice(request.toolChoice),
+      },
+      request.signal,
+    );
+
+    if (!response.ok) {
+      throw new Error(await formatHttpError(response));
+    }
+    if (!response.body) {
+      throw new Error('Provider did not return a streaming response body');
+    }
+
+    const decoder = new TextDecoder();
+    const reader = response.body.getReader();
+    const toolCalls = new Map<number, { id?: string; name: string; arguments: string }>();
+    const emittedToolCallIndexes = new Set<number>();
+    let buffer = '';
+    let fullText = '';
+    let finishReason: string | null = null;
+    let inputTokens: number | undefined;
+    let outputTokens: number | undefined;
+
+    const handleChunk = async function* (chunk: ChatCompletionChunk): AsyncIterable<LlmToolStreamEvent> {
+      const choice = chunk.choices?.[0];
+      const text = choice?.delta?.content;
+      if (text) {
+        fullText += text;
+        yield { type: 'delta' as const, text };
+      }
+
+      for (const call of choice?.delta?.tool_calls ?? []) {
+        const index = call.index ?? 0;
+        const current = toolCalls.get(index) ?? { name: '', arguments: '' };
+        if (call.id) current.id = call.id;
+        if (call.function?.name) current.name += call.function.name;
+        if (call.function?.arguments) current.arguments += call.function.arguments;
+        toolCalls.set(index, current);
+
+        if (!emittedToolCallIndexes.has(index) && current.id && current.name) {
+          emittedToolCallIndexes.add(index);
+          yield { type: 'tool_call' as const, id: current.id, name: current.name, input: {} };
+        }
+      }
+
+      finishReason = choice?.finish_reason ?? finishReason;
+      inputTokens = chunk.usage?.prompt_tokens ?? inputTokens;
+      outputTokens = chunk.usage?.completion_tokens ?? outputTokens;
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const blocks = buffer.split(/\r?\n\r?\n/);
+      buffer = blocks.pop() ?? '';
+
+      for (const block of blocks) {
+        for (const payload of parseSsePayloads(block)) {
+          if (payload === '[DONE]') continue;
+          const chunk = parseProviderChunk(payload);
+          if (!chunk) continue;
+          for await (const event of handleChunk(chunk)) yield event;
+        }
+      }
+    }
+
+    if (buffer.trim()) {
+      for (const payload of parseSsePayloads(buffer)) {
+        if (payload === '[DONE]') continue;
+        const chunk = parseProviderChunk(payload);
+        if (!chunk) continue;
+        for await (const event of handleChunk(chunk)) yield event;
+      }
+    }
+
+    if (inputTokens !== undefined || outputTokens !== undefined) {
+      yield { type: 'usage', inputTokens, outputTokens };
+    }
+
+    const content: LlmContentBlock[] = [];
+    if (fullText.trim()) content.push({ type: 'text', text: fullText });
+    for (const [index, call] of [...toolCalls.entries()].sort(([left], [right]) => left - right)) {
+      if (!call.name) continue;
+      content.push({
+        type: 'tool_use',
+        id: call.id || `tool_call_${index}`,
+        name: call.name,
+        input: parseToolArguments(call.arguments),
+      });
+    }
+
+    yield { type: 'message', content, stopReason: finishReason, inputTokens, outputTokens };
+  }
+
+  async embedTexts(request: LlmEmbeddingRequest) {
+    const model = request.model || request.config.embeddingModel || defaultEmbeddingModel(request.config.provider);
+    const response = await this.fetchEmbeddings(
+      request.config,
+      {
+        model,
+        input: request.texts,
+      },
+      request.signal,
+    );
+
+    if (!response.ok) {
+      throw new Error(await formatHttpError(response));
+    }
+
+    const payload = (await response.json()) as EmbeddingResponse;
+    const vectors = (payload.data ?? [])
+      .sort((left, right) => (left.index ?? 0) - (right.index ?? 0))
+      .map((item) => item.embedding)
+      .filter((embedding): embedding is number[] => Array.isArray(embedding));
+
+    if (vectors.length !== request.texts.length) {
+      throw new Error('Embedding API 返回的向量数量与输入文本数量不一致');
+    }
+
+    return { vectors, model: payload.model || model };
+  }
+
   async generateStructured<T = unknown>(request: LlmStructuredRequest) {
     const messages = [
       ...(request.system ? [{ role: 'system', content: buildStructuredSystemPrompt(request.system, request.schema) }] : []),
-      ...request.messages
-        .filter((message) => message.role !== 'system')
-        .map((message) => ({ role: message.role, content: message.content })),
+      ...toOpenAiMessages('', request.messages).filter((message) => message.role !== 'system'),
     ];
 
     const attempts = [
@@ -181,22 +350,40 @@ export class OpenAiCompatibleProvider implements LlmProvider {
   }
 
   private fetchChatCompletions(config: LlmConfig, body: Record<string, unknown>, signal?: AbortSignal) {
+    return this.fetchProviderEndpoint(config, '/chat/completions', body, signal);
+  }
+
+  private fetchEmbeddings(config: LlmConfig, body: Record<string, unknown>, signal?: AbortSignal) {
+    return this.fetchProviderEndpoint(config, '/embeddings', body, signal, {
+      apiKey: config.embeddingApiKey ?? config.apiKey,
+      baseUrl: config.embeddingBaseUrl ?? config.baseUrl,
+    });
+  }
+
+  private fetchProviderEndpoint(
+    config: LlmConfig,
+    path: string,
+    body: Record<string, unknown>,
+    signal?: AbortSignal,
+    override?: { apiKey?: string; baseUrl?: string },
+  ) {
     const metadata = LLM_PROVIDER_METADATA[config.provider];
     const defaultBaseUrl = 'defaultBaseUrl' in metadata ? metadata.defaultBaseUrl : undefined;
-    const baseUrl = trimTrailingSlash(config.baseUrl || defaultBaseUrl);
+    const baseUrl = trimTrailingSlash(override?.baseUrl || config.baseUrl || defaultBaseUrl);
+    const apiKey = override?.apiKey ?? config.apiKey;
     if (!baseUrl) {
       throw new Error(`${metadata.label} Base URL is required`);
     }
-    if (metadata.requiresApiKey && !config.apiKey) {
+    if (metadata.requiresApiKey && !apiKey) {
       throw new Error(`${metadata.label} API key is required`);
     }
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (config.apiKey) {
-      headers.Authorization = `Bearer ${config.apiKey}`;
+    if (apiKey) {
+      headers.Authorization = `Bearer ${apiKey}`;
     }
 
-    return fetchWithOptionalProxy(`${baseUrl}/chat/completions`, {
+    return fetchWithOptionalProxy(`${baseUrl}${path}`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
@@ -216,6 +403,94 @@ function buildStructuredSystemPrompt(system: string, schema: unknown) {
     'JSON 对象必须满足以下 JSON Schema；缺失信息请用空数组、空字符串或保守的安全提示补足，不要省略 required 字段。',
     JSON.stringify(schema),
   ].join('\n');
+}
+
+function toOpenAiMessages(system: string, messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string | LlmContentBlock[] }>) {
+  const result: OpenAiChatMessage[] = [];
+  if (system) result.push({ role: 'system', content: system });
+
+  for (const message of messages) {
+    if (message.role === 'system') {
+      if (typeof message.content === 'string' && message.content.trim()) {
+        result.push({ role: 'system', content: message.content });
+      }
+      continue;
+    }
+
+    if (typeof message.content === 'string') {
+      result.push({ role: message.role, content: message.content });
+      continue;
+    }
+
+    const text = message.content
+      .filter((block): block is Extract<LlmContentBlock, { type: 'text' }> => block.type === 'text')
+      .map((block) => block.text)
+      .join('');
+    const images = message.content.filter((block): block is Extract<LlmContentBlock, { type: 'image' }> => block.type === 'image');
+    const toolUses = message.content.filter((block): block is Extract<LlmContentBlock, { type: 'tool_use' }> => block.type === 'tool_use');
+    const toolResults = message.content.filter((block): block is Extract<LlmContentBlock, { type: 'tool_result' }> => block.type === 'tool_result');
+
+    if (toolUses.length) {
+      result.push({
+        role: 'assistant',
+        content: text || null,
+        tool_calls: toolUses.map((toolUse) => ({
+          id: toolUse.id,
+          type: 'function',
+          function: {
+            name: toolUse.name,
+            arguments: JSON.stringify(toolUse.input ?? {}),
+          },
+        })),
+      });
+    } else if (text || images.length) {
+      result.push({ role: message.role, content: buildOpenAiContent(text, images) });
+    }
+
+    for (const block of toolResults) {
+      result.push({ role: 'tool', tool_call_id: block.toolUseId, content: block.content });
+    }
+  }
+
+  return result;
+}
+
+function toOpenAiToolChoice(toolChoice: LlmToolStreamRequest['toolChoice']) {
+  if (!toolChoice || toolChoice.type === 'auto') return 'auto';
+  return { type: 'function', function: { name: toolChoice.name } };
+}
+
+function buildOpenAiContent(text: string, images: Array<Extract<LlmContentBlock, { type: 'image' }>>) {
+  if (!images.length) return text;
+  return [
+    ...(text ? [{ type: 'text' as const, text }] : []),
+    ...images.map((image) => ({
+      type: 'image_url' as const,
+      image_url: { url: `data:${image.mediaType};base64,${image.data}` },
+    })),
+  ];
+}
+
+function parseToolArguments(raw: string) {
+  if (!raw.trim()) return {};
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return { raw };
+  }
+}
+
+function defaultEmbeddingModel(provider: LlmConfig['provider']) {
+  const defaults: Partial<Record<LlmConfig['provider'], string>> = {
+    openai: 'text-embedding-3-small',
+    openrouter: 'text-embedding-3-small',
+    ollama: 'nomic-embed-text',
+    qwen: 'text-embedding-v4',
+    zhipu: 'embedding-3',
+    baidu: 'bge-large-zh',
+    volcengine: 'doubao-embedding-large-text-240915',
+  };
+  return defaults[provider] ?? 'text-embedding-3-small';
 }
 
 function parseProviderChunk(payload: string) {

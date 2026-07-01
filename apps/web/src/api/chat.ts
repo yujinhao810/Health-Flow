@@ -51,6 +51,15 @@ export async function uploadFile(file: File, purpose: 'chat_attachment' | 'knowl
   return response.json() as Promise<ChatAttachment>;
 }
 
+export function listUploads(purpose?: 'chat_attachment' | 'knowledge_source') {
+  const query = purpose ? `?purpose=${purpose}` : '';
+  return api<ChatAttachment[]>(`/uploads${query}`);
+}
+
+export function deleteUpload(id: string) {
+  return api<{ id: string; deleted: true }>(`/uploads/${id}`, { method: 'DELETE' });
+}
+
 export async function streamConversation(
   conversationId: string,
   input: SendMessageInput,
