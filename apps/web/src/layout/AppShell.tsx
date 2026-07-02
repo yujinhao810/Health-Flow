@@ -9,9 +9,10 @@ import {
   SettingOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { Button, Layout, Menu, Spin, Tooltip, Typography } from 'antd';
+import { Avatar, Button, Layout, Menu, Spin, Tooltip, Typography } from 'antd';
 import { useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { getAvatarImageSrc } from '../api/auth';
 import { useAuth } from '../hooks/useAuth';
 import { AuthPage } from '../pages/AuthPage';
 
@@ -20,9 +21,9 @@ const { Content, Sider } = Layout;
 const navItems = [
   { key: '/', icon: <DashboardOutlined />, label: '总览' },
   { key: '/records', icon: <HeartOutlined />, label: '健康记录' },
-  { key: '/chat', icon: <MessageOutlined />, label: '心理对话' },
-  { key: '/diagnosis', icon: <MedicineBoxOutlined />, label: '辅助分诊' },
-  { key: '/settings', icon: <SettingOutlined />, label: '模型设置' },
+  { key: '/chat', icon: <MessageOutlined />, label: '灵犀一问' },
+  { key: '/diagnosis', icon: <MedicineBoxOutlined />, label: '健康会诊' },
+  { key: '/settings', icon: <SettingOutlined />, label: '设置' },
 ];
 
 const menuItems = navItems.map((item) => ({ key: item.key, icon: item.icon, label: item.label }));
@@ -33,6 +34,7 @@ export function AppShell() {
   const { user, loading, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const selectedKey = location.pathname.startsWith('/diagnosis') ? '/diagnosis' : location.pathname;
+  const avatarSrc = user ? getAvatarImageSrc(user.avatarUrl) : undefined;
 
   if (loading) {
     return (
@@ -95,9 +97,7 @@ export function AppShell() {
           <Menu selectedKeys={[selectedKey]} mode="inline" items={menuItems} onClick={({ key }) => navigate(key)} />
         )}
         <div className="account-panel">
-          <div className="account-avatar">
-            <UserOutlined />
-          </div>
+          <Avatar className="account-avatar" src={avatarSrc} icon={<UserOutlined />} />
           {!collapsed ? (
             <div className="account-copy">
               <Typography.Text strong>{user.displayName || user.email.split('@')[0]}</Typography.Text>

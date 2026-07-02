@@ -11,3 +11,4 @@ apps/**/dist
 apps/**/.turbo
 packages/**/dist
 apps/api/prisma/dev.db
+apps/api/storage/avatars/

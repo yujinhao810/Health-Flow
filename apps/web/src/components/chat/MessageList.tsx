@@ -1,14 +1,39 @@
+import { HeartOutlined } from '@ant-design/icons';
 import { Image, Spin, Typography } from 'antd';
-import type { CSSProperties } from 'react';
+import type { AnchorHTMLAttributes, CSSProperties, TableHTMLAttributes } from 'react';
 import { useCallback, useLayoutEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { withAuthToken } from '../../api/client';
 import type { UiMessage } from '../../hooks/useChatStream';
 
 const bottomThreshold = 24;
-const sunflowerPetals = Array.from({ length: 24 });
-const orbitDots = Array.from({ length: 6 });
+const starterPrompts = [
+  { label: '压力', text: '最近压力有点大，想和你一起理一理。' },
+  { label: '睡眠', text: '我最近睡眠不太稳定，可以帮我看看怎么调整吗？' },
+  { label: '情绪', text: '今天情绪有点乱，我想先把它说清楚。' },
+];
 
-export function MessageList({ messages, loading }: { messages: UiMessage[]; loading?: boolean }) {
+const markdownComponents = {
+  a: ({ node: _node, ...props }: AnchorHTMLAttributes<HTMLAnchorElement> & { node?: unknown }) => <a {...props} target="_blank" rel="noreferrer" />,
+  table: ({ node: _node, ...props }: TableHTMLAttributes<HTMLTableElement> & { node?: unknown }) => (
+    <div className="chat-markdown-table-wrap">
+      <table {...props} />
+    </div>
+  ),
+};
+
+export function MessageList({
+  messages,
+  loading,
+  userLabel,
+  onPromptSelect,
+}: {
+  messages: UiMessage[];
+  loading?: boolean;
+  userLabel?: string;
+  onPromptSelect?: (prompt: string) => void;
+}) {
   const windowRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
 
@@ -38,39 +63,32 @@ export function MessageList({ messages, loading }: { messages: UiMessage[]; load
   if (!messages.length) {
     return (
       <div ref={windowRef} className="chat-window chat-window-centered" onScroll={updateStickiness}>
-        <div className="sunflower-empty" aria-label="温暖的向日葵空状态">
-          <div className="sunflower-aura" />
-          <div className="sunflower-orbit" aria-hidden="true">
-            {orbitDots.map((_, index) => (
-              <span key={index} />
-            ))}
+        <div className="orb-empty" aria-label="呼吸光球空状态">
+          <div className="orb-aura" aria-hidden="true" />
+          <div className="orb-rings" aria-hidden="true">
+            <span className="orb-ring" />
+            <span className="orb-ring orb-ring-reverse" />
           </div>
-          <div className="sunflower-bloom" aria-hidden="true">
-            <div className="sunflower-petals">
-              {sunflowerPetals.map((_, index) => (
-                <span
-                  key={index}
-                  className="sunflower-petal"
-                  style={{ '--petal-index': index, '--petal-scale': 0.9 + (index % 3) * 0.05 } as CSSProperties}
-                />
-              ))}
-            </div>
-            <div className="sunflower-core">
-              <span className="sunflower-core-glass" />
-              <span className="sunflower-core-shine" />
-            </div>
+          <div className="orb-core" aria-hidden="true">
+            <span className="orb-highlight" />
+            <span className="orb-inner-glow" />
           </div>
-          <div className="sunflower-stem" aria-hidden="true">
-            <span className="sunflower-leaf left" />
-            <span className="sunflower-leaf right" />
+          <div className="orb-reflection" aria-hidden="true" />
+          <div className="orb-particles" aria-hidden="true">
+            <span className="orb-particle" style={{ '--px': '-68px', '--py': '-42px', '--duration': '9s' } as CSSProperties} />
+            <span className="orb-particle" style={{ '--px': '56px', '--py': '-58px', '--duration': '11s' } as CSSProperties} />
+            <span className="orb-particle" style={{ '--px': '72px', '--py': '24px', '--duration': '7.5s' } as CSSProperties} />
+            <span className="orb-particle" style={{ '--px': '-50px', '--py': '46px', '--duration': '10s' } as CSSProperties} />
           </div>
-          <div className="sunflower-empty-copy">
+          <div className="orb-empty-copy">
             <Typography.Title level={4}>先把心里的重量放下来</Typography.Title>
             <Typography.Text>可以从最近的压力、情绪或困扰开始聊起，我会陪你慢慢梳理出清晰的一步。</Typography.Text>
-            <div className="sunflower-prompts" aria-hidden="true">
-              <span>压力</span>
-              <span>睡眠</span>
-              <span>情绪</span>
+            <div className="orb-prompts" aria-label="对话开场建议">
+              {starterPrompts.map((prompt) => (
+                <button key={prompt.label} type="button" onClick={() => onPromptSelect?.(prompt.text)}>
+                  {prompt.label}
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -85,60 +103,86 @@ export function MessageList({ messages, loading }: { messages: UiMessage[]; load
 
         return (
           <div key={message.id} className={`chat-message ${message.role} ${message.status ?? ''}`}>
-            <div className="chat-role">{message.role === 'user' ? '我' : '心理助手'}</div>
-            <div className="chat-bubble">
-              {message.content || (message.status === 'streaming' ? '正在回应...' : '')}
-              {message.status === 'stopped' ? <span className="chat-status"> 已停止生成</span> : null}
-              {message.ragStatus === 'searching' ? <div className="chat-rag-status">正在检索健康安全知识库...</div> : null}
-              {message.attachments?.length ? (
-                <div className="chat-attachments">
-                  {message.attachments.map((attachment) => {
-                    const contentUrl = attachment.contentUrl ? withAuthToken(attachment.contentUrl) : undefined;
+            {message.role === 'assistant' ? (
+              <div className="chat-message-avatar assistant" aria-hidden="true">
+                <HeartOutlined />
+              </div>
+            ) : null}
+            <div className="chat-message-stack">
+              <div className="chat-bubble">
+                <MessageMarkdown content={message.content || (message.status === 'streaming' ? '正在回应...' : '')} />
+                {message.status === 'stopped' ? <span className="chat-status"> 已停止生成</span> : null}
+                {message.ragStatus === 'searching' ? <div className="chat-rag-status">正在检索健康安全知识库...</div> : null}
+                {message.attachments?.length ? (
+                  <div className="chat-attachments">
+                    {message.attachments.map((attachment) => {
+                      const contentUrl = attachment.contentUrl ? withAuthToken(attachment.contentUrl) : undefined;
 
-                    if (contentUrl && attachment.mimeType.startsWith('image/')) {
-                      return (
-                        <Image
-                          key={attachment.id}
-                          className="chat-image-thumb"
-                          src={contentUrl}
-                          alt={attachment.originalName}
-                          preview={{ mask: '预览图片' }}
-                        />
-                      );
-                    }
+                      if (contentUrl && attachment.mimeType.startsWith('image/')) {
+                        return (
+                          <Image
+                            key={attachment.id}
+                            className="chat-image-thumb"
+                            src={contentUrl}
+                            alt={attachment.originalName}
+                            preview={{ mask: '预览图片' }}
+                          />
+                        );
+                      }
 
-                    if (contentUrl) {
+                      if (contentUrl) {
+                        return (
+                          <a key={attachment.id} href={contentUrl} target="_blank" rel="noreferrer" className="chat-attachment-chip">
+                            {attachment.purpose === 'knowledge_source' ? '资料' : '文件'}：{attachment.originalName}
+                          </a>
+                        );
+                      }
+
                       return (
-                        <a key={attachment.id} href={contentUrl} target="_blank" rel="noreferrer" className="chat-attachment-chip">
+                        <span key={attachment.id} className="chat-attachment-chip">
                           {attachment.purpose === 'knowledge_source' ? '资料' : '文件'}：{attachment.originalName}
-                        </a>
+                        </span>
                       );
-                    }
-
-                    return (
-                      <span key={attachment.id} className="chat-attachment-chip">
-                        {attachment.purpose === 'knowledge_source' ? '资料' : '文件'}：{attachment.originalName}
-                      </span>
-                    );
-                  })}
-                </div>
-              ) : null}
-              {citationSources.length ? (
-                <div className="chat-citations">
-                  <div className="chat-citations-title">参考来源</div>
-                  {citationSources.map((citation) => (
-                    <div key={citation.key} className="chat-citation-item">
-                      <strong>{citation.title}</strong>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
+                    })}
+                  </div>
+                ) : null}
+                {citationSources.length ? (
+                  <div className="chat-citations">
+                    <div className="chat-citations-title">参考来源</div>
+                    {citationSources.map((citation) => (
+                      <div key={citation.key} className="chat-citation-item">
+                        <strong>{citation.title}</strong>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
+            {message.role === 'user' ? (
+              <div className="chat-message-avatar user" aria-label={userLabel || '我'}>
+                {getInitial(userLabel)}
+              </div>
+            ) : null}
           </div>
         );
       })}
     </div>
   );
+}
+
+function MessageMarkdown({ content }: { content: string }) {
+  if (!content) return null;
+  return (
+    <div className="chat-markdown">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+function getInitial(value?: string) {
+  return (value || '我').trim().slice(0, 1).toUpperCase();
 }
 
 function getCitationSources(citations: UiMessage['citations']) {

@@ -1,6 +1,8 @@
 import { Button, Card, Col, Empty, List, Progress, Row, Space, Spin, Statistic, Tag, Typography } from 'antd';
 import type { HealthSnapshotSignals } from '@health/shared';
+import { CompactTrendChart } from '../charts/CompactTrendChart';
 import { useSnapshots } from '../../hooks/useSnapshots';
+import { buildChartPointsFromDailyValues } from '../../lib/chart-data';
 
 const emptySignals: HealthSnapshotSignals = {
   recordCount: 0,
@@ -57,10 +59,10 @@ export function SnapshotCard() {
                       format={() => `${signals.mood.averageScore ?? '-'} / 10`}
                       strokeColor={{ '0%': '#a78bfa', '100%': '#6d5dfc' }}
                     />
-                    <MiniBars
-                      data={signals.mood.dailyScores.map((item) => ({ date: item.date, value: item.score }))}
-                      max={10}
-                      suffix="分"
+                    <CompactTrendChart
+                      type="mood"
+                      data={buildChartPointsFromDailyValues(signals.mood.dailyScores.map((item) => ({ date: item.date, value: item.score })), 'week')}
+                      height={96}
                     />
                     <Space wrap>
                       {signals.mood.topTags.map((item) => <Tag key={item.tag} color="purple">{item.tag} × {item.count}</Tag>)}
@@ -88,10 +90,10 @@ export function SnapshotCard() {
                         <Statistic title="平均质量" value={signals.sleep.averageQuality ?? 0} suffix="/5" precision={1} />
                       </Col>
                     </Row>
-                    <MiniBars
-                      data={signals.sleep.dailyHours.map((item) => ({ date: item.date, value: item.hours }))}
-                      max={Math.max(8, ...signals.sleep.dailyHours.map((item) => item.hours))}
-                      suffix="h"
+                    <CompactTrendChart
+                      type="sleep"
+                      data={buildChartPointsFromDailyValues(signals.sleep.dailyHours.map((item) => ({ date: item.date, value: item.hours })), 'week')}
+                      height={96}
                     />
                   </Space>
                 )}
@@ -120,10 +122,10 @@ export function SnapshotCard() {
                       percent={Math.round(signals.exercise.frequencyPerWeek * 100)}
                       strokeColor={{ '0%': '#38bdf8', '100%': '#6d5dfc' }}
                     />
-                    <MiniBars
-                      data={signals.exercise.dailyMinutes.map((item) => ({ date: item.date, value: item.minutes }))}
-                      max={Math.max(30, ...signals.exercise.dailyMinutes.map((item) => item.minutes))}
-                      suffix="m"
+                    <CompactTrendChart
+                      type="exercise"
+                      data={buildChartPointsFromDailyValues(signals.exercise.dailyMinutes.map((item) => ({ date: item.date, value: item.minutes })), 'week', 'sum')}
+                      height={96}
                     />
                     <Space wrap>
                       {signals.exercise.byActivity.slice(0, 4).map((item) => (

@@ -1,53 +1,35 @@
-import { DeleteOutlined, PaperClipOutlined, SendOutlined, StopOutlined } from '@ant-design/icons';
+import { PaperClipOutlined, SendOutlined, StopOutlined } from '@ant-design/icons';
 import type { ChatAttachment } from '@health/shared';
-import { Button, Input, Switch, Upload, message } from 'antd';
+import { Button, Input, Switch, Tooltip, Upload, message } from 'antd';
 import type { KeyboardEvent } from 'react';
-import { useEffect, useState } from 'react';
-import { deleteUpload, listUploads, uploadFile } from '../../api/chat';
+import { useState } from 'react';
+import { uploadFile } from '../../api/chat';
 import type { SendChatInput } from '../../hooks/useChatStream';
 
 export function Composer({
+  value,
+  onChange,
   onSend,
   onStop,
   streaming,
+  onKnowledgeUploaded,
 }: {
+  value: string;
+  onChange: (value: string) => void;
   onSend: (input: SendChatInput) => void;
   onStop: () => void;
   streaming: boolean;
+  onKnowledgeUploaded?: () => void;
 }) {
-  const [value, setValue] = useState('');
   const [ragEnabled, setRagEnabled] = useState(true);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
-  const [knowledgeUploads, setKnowledgeUploads] = useState<ChatAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [loadingKnowledge, setLoadingKnowledge] = useState(false);
-  const [deletingUploadId, setDeletingUploadId] = useState<string>();
   const trimmedValue = value.trim();
-
-  useEffect(() => {
-    let active = true;
-    setLoadingKnowledge(true);
-
-    listUploads('knowledge_source')
-      .then((uploads) => {
-        if (active) setKnowledgeUploads(uploads);
-      })
-      .catch((error) => {
-        if (active) message.error(error instanceof Error ? error.message : '加载知识库文档失败');
-      })
-      .finally(() => {
-        if (active) setLoadingKnowledge(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const send = () => {
     if (!trimmedValue || streaming || uploading) return;
     onSend({ content: trimmedValue, attachments, ragEnabled });
-    setValue('');
+    onChange('');
     setAttachments([]);
   };
 
@@ -55,21 +37,6 @@ export function Composer({
     if (event.key !== 'Enter' || event.shiftKey) return;
     event.preventDefault();
     send();
-  };
-
-  const handleDeleteKnowledgeUpload = async (id: string) => {
-    if (streaming || deletingUploadId) return;
-
-    setDeletingUploadId(id);
-    try {
-      await deleteUpload(id);
-      setKnowledgeUploads((current) => current.filter((item) => item.id !== id));
-      message.success('知识库文档已删除');
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : '删除知识库文档失败');
-    } finally {
-      setDeletingUploadId(undefined);
-    }
   };
 
   return (
@@ -86,69 +53,53 @@ export function Composer({
           ))}
         </div>
       ) : null}
-      {knowledgeUploads.length || loadingKnowledge ? (
-        <div className="chat-attachments composer-knowledge" aria-label="知识库文档">
-          {loadingKnowledge ? <span className="composer-knowledge-hint">正在加载知识库文档...</span> : null}
-          {knowledgeUploads.map((attachment) => (
-            <span key={attachment.id} className="chat-attachment-chip knowledge-chip" title={attachment.originalName}>
-              <span className="knowledge-chip-name">{attachment.originalName}</span>
-              <Button
-                aria-label={`删除 ${attachment.originalName}`}
-                className="knowledge-chip-delete"
-                type="text"
-                size="small"
-                icon={<DeleteOutlined />}
-                loading={deletingUploadId === attachment.id}
-                disabled={streaming || Boolean(deletingUploadId)}
-                onClick={() => void handleDeleteKnowledgeUpload(attachment.id)}
-              />
-            </span>
-          ))}
-        </div>
-      ) : null}
-      <div className="chat-rag-toggle">
-        <span>本轮使用知识库</span>
-        <Switch size="small" checked={ragEnabled} onChange={setRagEnabled} disabled={streaming} />
-      </div>
+
       <div className="chat-composer-shell">
-        <Upload
-          showUploadList={false}
-          maxCount={1}
-          accept=".pdf,.doc,.docx,.txt,.md,.markdown,.json,.csv,.png,.jpg,.jpeg,.webp,.gif,.bmp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,application/json,text/csv,image/*"
-          beforeUpload={async (file) => {
-            setUploading(true);
-            const purpose = getUploadPurpose(file);
-            try {
-              const uploaded = await uploadFile(file, purpose);
-              if (uploaded.purpose === 'knowledge_source') {
-                setKnowledgeUploads((current) => [uploaded, ...current.filter((item) => item.id !== uploaded.id)]);
-                message.success('资料已入库，可以直接提问');
-              } else {
-                setAttachments((current) => [...current, uploaded].slice(0, 6));
-                message.success('附件已上传，将随本轮消息发送');
+        <Tooltip title="上传图片或资料">
+          <Upload
+            showUploadList={false}
+            maxCount={1}
+            accept=".pdf,.doc,.docx,.txt,.md,.markdown,.json,.csv,.png,.jpg,.jpeg,.webp,.gif,.bmp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,application/json,text/csv,image/*"
+            beforeUpload={async (file) => {
+              setUploading(true);
+              const purpose = getUploadPurpose(file);
+              try {
+                const uploaded = await uploadFile(file, purpose);
+                if (uploaded.purpose === 'knowledge_source') {
+                  onKnowledgeUploaded?.();
+                  message.success('资料已入库，可以直接提问');
+                } else {
+                  setAttachments((current) => [...current, uploaded].slice(0, 6));
+                  message.success('附件已上传，将随本轮消息发送');
+                }
+              } catch (uploadError) {
+                message.error(uploadError instanceof Error ? uploadError.message : '上传失败');
+              } finally {
+                setUploading(false);
               }
-            } catch (error) {
-              message.error(error instanceof Error ? error.message : '上传失败');
-            } finally {
-              setUploading(false);
-            }
-            return Upload.LIST_IGNORE;
-          }}
-          disabled={streaming || uploading}
-        >
-          <Button icon={<PaperClipOutlined />} loading={uploading} disabled={streaming}>
-            上传
-          </Button>
-        </Upload>
+              return Upload.LIST_IGNORE;
+            }}
+            disabled={streaming || uploading}
+          >
+            <Button className="chat-upload-button" icon={<PaperClipOutlined />} loading={uploading} disabled={streaming} aria-label="上传附件" />
+          </Upload>
+        </Tooltip>
+
         <Input.TextArea
           className="chat-composer-input"
           value={value}
-          onChange={(event) => setValue(event.target.value)}
+          onChange={(event) => onChange(event.target.value)}
           onKeyDown={handleKeyDown}
           autoSize={{ minRows: 2, maxRows: 4 }}
           disabled={streaming}
           placeholder="说说你今天的状态，或问我最近健康记录有什么变化..."
         />
+
+        <label className="chat-rag-toggle">
+          <span>知识库</span>
+          <Switch size="small" checked={ragEnabled} onChange={setRagEnabled} disabled={streaming} />
+        </label>
+
         {streaming ? (
           <Button className="chat-composer-action" danger icon={<StopOutlined />} onClick={onStop}>
             停止
@@ -159,6 +110,7 @@ export function Composer({
           </Button>
         )}
       </div>
+      <div className="chat-safety-note">我可以陪你梳理情绪，但不能替代医生或心理咨询师；若有紧急危险，请立刻联系当地紧急服务或可信任的人。</div>
     </div>
   );
 }

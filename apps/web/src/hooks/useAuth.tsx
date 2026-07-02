@@ -1,26 +1,39 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { getCurrentUser, login as loginRequest, register as registerRequest, type AuthUser, type LoginInput, type RegisterInput } from '../api/auth';
+import { getCurrentUser, login as loginRequest, register as registerRequest, type LoginInput, type RegisterInput, type UserProfile } from '../api/auth';
 import { AUTH_CHANGED_EVENT, clearAuthToken, getAuthToken, setAuthToken } from '../api/client';
 
 type AuthContextValue = {
-  user: AuthUser | null;
+  user: UserProfile | null;
   loading: boolean;
   login: (input: LoginInput) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => void;
+  refreshUser: () => Promise<UserProfile | null>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   const resetPersonalCache = useCallback(() => {
     queryClient.clear();
   }, [queryClient]);
+
+  const refreshUser = useCallback(async () => {
+    const token = getAuthToken();
+    if (!token) {
+      setUser(null);
+      return null;
+    }
+
+    const result = await getCurrentUser();
+    setUser(result.user);
+    return result.user;
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearAuthToken();
   }, [resetPersonalCache]);
 
-  const value = useMemo(() => ({ user, loading, login, register, logout }), [user, loading, login, register, logout]);
+  const value = useMemo(() => ({ user, loading, login, register, logout, refreshUser }), [user, loading, login, register, logout, refreshUser]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

@@ -110,17 +110,7 @@ function WesternPanel({ assessment }: { assessment: WesternAssessment }) {
           footer: item.supportingFindings.length ? `依据：${item.supportingFindings.join('、')}` : undefined,
         }))}
       />
-      <MiniSection
-        icon={<QuestionCircleOutlined />}
-        title="西医初评：建议检查/评估"
-        empty="暂无检查建议"
-        items={assessment.recommendedChecks.map((item) => ({
-          title: item.name,
-          tag: URGENCY_LABELS[item.timing] ?? item.timing,
-          content: item.reason,
-        }))}
-      />
-      <PlainList title="西医初评：就医边界" items={assessment.seekCareCriteria} />
+      <PlainList title="西医初评：仍缺少的信息" items={assessment.missingInformation} />
     </Space>
   );
 }
@@ -149,7 +139,7 @@ function TcmPanel({ assessment }: { assessment: TcmAssessment }) {
         empty="暂无补充问题"
         items={assessment.tonguePulseQuestions.map((item) => ({ title: item, content: '' }))}
       />
-      <PlainList title="中医初评：调养提醒" items={assessment.regulationSuggestions.map((item) => `${item.suggestion}${item.safetyNote ? `；${item.safetyNote}` : ''}`)} />
+      <PlainList title="中医初评：仍缺少的信息" items={assessment.missingInformation} />
     </Space>
   );
 }

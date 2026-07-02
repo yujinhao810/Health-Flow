@@ -1,11 +1,13 @@
-import { Alert, Card, Col, Empty, List, Row, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Collapse, Empty, List, Space, Steps, Tabs, Tag, Typography } from 'antd';
 import {
   CheckCircleOutlined,
   HeartOutlined,
   MedicineBoxOutlined,
+  PlusCircleOutlined,
   SafetyOutlined,
 } from '@ant-design/icons';
 import type { ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { DiagnosisSession, GenerationStatus, IntegratedDiagnosisResult, TcmAssessment, WesternAssessment } from '@health/shared';
 import { ExpertPanel } from './ExpertPanel';
 import { RedFlagAlert } from './RedFlagAlert';
@@ -27,6 +29,8 @@ const PRIORITY_LABELS: Record<string, string> = {
 const FALLBACK_KEYWORDS = ['结构化输出暂不可用', '输出暂不可用', '专家输出暂不可用'];
 
 export function DiagnosisResult({ session }: { session?: DiagnosisSession | null }) {
+  const navigate = useNavigate();
+
   if (!session) {
     return (
       <Card className="diagnosis-empty-card">
@@ -41,6 +45,7 @@ export function DiagnosisResult({ session }: { session?: DiagnosisSession | null
   const generationStatus = getGenerationStatus(session);
   const westernAvailable = Boolean(western) && generationStatus.western === 'complete' && !containsFallbackText(western);
   const tcmAvailable = Boolean(tcm) && generationStatus.tcm === 'complete' && !containsFallbackText(tcm);
+  const canShowExpertPanel = Boolean(western || tcm);
 
   return (
     <Space direction="vertical" size={16} className="diagnosis-result">
@@ -48,99 +53,123 @@ export function DiagnosisResult({ session }: { session?: DiagnosisSession | null
 
       {result ? (
         <>
-          <Card className="diagnosis-summary-card" bordered={false}>
-            <div className="diagnosis-summary-head">
-              <div>
-                <Typography.Text className="diagnosis-eyebrow">安全结论</Typography.Text>
-                <Typography.Title level={3}>辅助分诊结论</Typography.Title>
+          <div className="diagnosis-decision-layout">
+            <Card className="diagnosis-summary-card" bordered={false}>
+              <div className="diagnosis-summary-head">
+                <div>
+                  <Typography.Text className="diagnosis-eyebrow">安全结论</Typography.Text>
+                  <Typography.Title level={3}>先看这一步</Typography.Title>
+                </div>
+                <SafetyTag level={result.safetyLevel} />
               </div>
-              <SafetyTag level={result.safetyLevel} />
-            </div>
 
-            {generationStatus.degraded ? (
-              <Alert
-                type="warning"
-                showIcon
-                className="diagnosis-quality-alert"
-                message="部分内容生成不完整"
-                description={generationStatus.warnings.length ? generationStatus.warnings.join('；') : '当前结果包含保守兜底内容，建议稍后重试或检查模型配置。'}
-              />
-            ) : null}
+              {generationStatus.degraded ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  className="diagnosis-quality-alert"
+                  message="部分内容生成不完整"
+                  description={generationStatus.warnings.length ? generationStatus.warnings.join('；') : '当前结果包含保守兜底内容，建议稍后重试或检查模型配置。'}
+                />
+              ) : null}
 
-            <div className="diagnosis-conclusion-panel">
-              <div className="diagnosis-conclusion-label">
-                <SafetyOutlined />
-                <Typography.Text>重点结论</Typography.Text>
+              <div className="diagnosis-conclusion-panel">
+                <div className="diagnosis-conclusion-label">
+                  <SafetyOutlined />
+                  <Typography.Text>重点结论</Typography.Text>
+                </div>
+                <Typography.Paragraph className="diagnosis-conclusion-text">
+                  {cleanFallbackText(result.summary, '当前信息不足以形成完整综合判断，请结合症状变化优先保障安全。')}
+                </Typography.Paragraph>
               </div>
-              <Typography.Paragraph className="diagnosis-conclusion-text">
-                {cleanFallbackText(result.summary, '当前信息不足以形成完整综合判断，请结合症状变化优先保障安全。')}
-              </Typography.Paragraph>
-            </div>
 
-            <Row gutter={[12, 12]} className="diagnosis-focus-row">
-              <Col xs={24} md={8}>
-                <FocusCard icon={<SafetyOutlined />} label="安全等级" value={safetyText(result.safetyLevel)} tone={result.safetyLevel} />
-              </Col>
-              <Col xs={24} md={8}>
-                <FocusCard
-                  icon={<MedicineBoxOutlined />}
-                  label="西医重点"
-                  value={westernAvailable ? cleanFallbackText(result.westernPerspective, '请结合症状变化进行线下医学评估。') : '本次西医建议生成不完整，请查看下方提示。'}
-                />
-              </Col>
-              <Col xs={24} md={8}>
-                <FocusCard
-                  icon={<HeartOutlined />}
-                  label="中医重点"
-                  value={tcmAvailable ? cleanFallbackText(result.tcmPerspective, '以低风险日常调养为主，症状加重时优先就医。') : '本次中医建议生成不完整，请查看下方提示。'}
-                />
-              </Col>
-            </Row>
-          </Card>
+              <FollowUpHint result={result} onSupplement={() => navigate('/diagnosis')} />
+            </Card>
 
-          <FollowUpCard result={result} />
+            <IntegratedAdviceCard result={result} integratedStatus={generationStatus.integrated} />
+          </div>
 
-          <Row gutter={[14, 14]} className="diagnosis-advice-grid">
-            <Col xs={24} xl={8}>
-              <WesternAdviceCard assessment={western} available={westernAvailable} />
-            </Col>
-            <Col xs={24} xl={8}>
-              <TcmAdviceCard assessment={tcm} available={tcmAvailable} />
-            </Col>
-            <Col xs={24} xl={8}>
-              <IntegratedAdviceCard result={result} integratedStatus={generationStatus.integrated} />
-            </Col>
-          </Row>
+          <Tabs
+            className="diagnosis-detail-tabs"
+            items={[
+              {
+                key: 'western',
+                label: '西医详情',
+                children: <WesternAdviceCard assessment={western} available={westernAvailable} />,
+              },
+              {
+                key: 'tcm',
+                label: '中医详情',
+                children: <TcmAdviceCard assessment={tcm} available={tcmAvailable} />,
+              },
+              {
+                key: 'integrated',
+                label: '汇总详情',
+                children: <IntegratedDetailCard result={result} />,
+              },
+            ]}
+          />
 
-          <Alert className="diagnosis-disclaimer" type="info" showIcon message="安全声明" description={result.disclaimer} />
+          <ExpertProcessCollapse western={western} tcm={tcm} generationStatus={generationStatus} visible={canShowExpertPanel} />
+
+          <ActionChecklist result={result} western={westernAvailable ? western : null} />
+
+          <div className="diagnosis-disclaimer-text">
+            <Typography.Text>{result.disclaimer}</Typography.Text>
+          </div>
         </>
       ) : (
         <Card>
           <Typography.Text type="secondary">本次分析尚未生成完整结果。</Typography.Text>
         </Card>
       )}
-
-      <ExpertPanel western={western} tcm={tcm} generationStatus={generationStatus} />
     </Space>
   );
 }
 
-function FollowUpCard({ result }: { result: IntegratedDiagnosisResult }) {
-  if (!result.needsFollowUp) return null;
-  const questions = filterFallbackItems(result.requiredFollowUpQuestions ?? []);
+function ExpertProcessCollapse({
+  western,
+  tcm,
+  generationStatus,
+  visible,
+}: {
+  western?: WesternAssessment | null;
+  tcm?: TcmAssessment | null;
+  generationStatus: GenerationStatus;
+  visible: boolean;
+}) {
+  if (!visible) return null;
   return (
-    <Alert
-      type="warning"
-      showIcon
-      className="diagnosis-followup-alert"
-      message="信息不足，建议先补充后再完成会诊"
-      description={
-        <Space direction="vertical" size={8}>
-          <Typography.Text>{result.followUpReason || '当前缺少会影响安全等级或建议方向的关键信息。'}</Typography.Text>
-          {questions.length ? <List size="small" dataSource={questions} renderItem={(item) => <List.Item>{item}</List.Item>} /> : null}
-        </Space>
-      }
+    <Collapse
+      className="diagnosis-expert-collapse"
+      ghost
+      items={[
+        {
+          key: 'expert',
+          label: '专家会诊细节（供参考）',
+          children: (
+            <Space direction="vertical" size={14} className="diagnosis-expert-collapse-body">
+              <Typography.Text type="secondary">以下内容展示 AI 的分析推理过程，核心建议已在上方呈现。</Typography.Text>
+              <ExpertPanel western={western} tcm={tcm} generationStatus={generationStatus} />
+            </Space>
+          ),
+        },
+      ]}
     />
+  );
+}
+
+function FollowUpHint({ result, onSupplement }: { result: IntegratedDiagnosisResult; onSupplement: () => void }) {
+  if (!result.needsFollowUp) return null;
+  const questions = getFollowUpQuestions(result).slice(0, 3);
+  const hint = questions.length ? questions.join('、') : result.followUpReason || '更多症状细节';
+  return (
+    <div className="diagnosis-followup-hint">
+      <Typography.Text type="secondary">补充以下信息可以获得更精准的建议：{hint}</Typography.Text>
+      <Button size="small" icon={<PlusCircleOutlined />} onClick={onSupplement}>
+        补充信息
+      </Button>
+    </div>
   );
 }
 
@@ -199,6 +228,10 @@ function TcmAdviceCard({ assessment, available }: { assessment?: TcmAssessment |
 
 function IntegratedAdviceCard({ result, integratedStatus }: { result: IntegratedDiagnosisResult; integratedStatus: GenerationStatus['integrated'] }) {
   const recommendations = (result.integrativeRecommendations ?? []).filter((item) => !containsFallbackText(item));
+  const immediateItems = recommendations.filter((item) => item.priority === 'immediate');
+  const soonItems = recommendations.filter((item) => item.priority === 'soon');
+  const routineItems = recommendations.filter((item) => item.priority === 'routine');
+  const urgentCount = immediateItems.length + soonItems.length;
   return (
     <Card className="diagnosis-advice-card integrated" bordered={false}>
       <AdviceHeader icon={<CheckCircleOutlined />} eyebrow="汇总建议" title="下一步怎么做" />
@@ -207,23 +240,154 @@ function IntegratedAdviceCard({ result, integratedStatus }: { result: Integrated
       ) : null}
       <Space direction="vertical" size={12} className="diagnosis-advice-body">
         {recommendations.length ? (
-          recommendations.map((item, index) => (
-            <div className="diagnosis-recommendation-card" key={`${item.title}-${index}`}>
-              <Space size={8} wrap>
-                <Typography.Text strong>{item.title}</Typography.Text>
-                <Tag color={priorityColor(item.priority)}>{PRIORITY_LABELS[item.priority] ?? item.priority}</Tag>
-              </Space>
-              <Typography.Paragraph>{cleanFallbackText(item.details, '请结合症状变化采取保守安全措施。')}</Typography.Paragraph>
-              <Typography.Text type="secondary">{CATEGORY_LABELS[item.category] ?? item.category}</Typography.Text>
+          <>
+            <div className="diagnosis-integrated-summary">
+              <Typography.Text strong>
+                你有 {urgentCount} 项需要尽快关注，{routineItems.length} 项日常建议
+              </Typography.Text>
+              <Typography.Text type="secondary">先处理高优先级事项，日常建议可按状态慢慢执行。</Typography.Text>
             </div>
-          ))
+            {urgentCount ? (
+              <>
+                {immediateItems.length ? <RecommendationGroup title="立即处理" items={immediateItems} /> : null}
+                {soonItems.length ? <RecommendationGroup title="尽快关注" items={soonItems} /> : null}
+              </>
+            ) : (
+              <div className="diagnosis-low-urgency-note">
+                <Typography.Text type="secondary">暂无需要立即处理的事项，可先按日常建议观察和调整。</Typography.Text>
+              </div>
+            )}
+            {routineItems.length ? (
+              <Collapse
+                className="diagnosis-routine-collapse"
+                ghost
+                items={[
+                  {
+                    key: 'routine',
+                    label: `展开 ${routineItems.length} 项日常建议`,
+                    children: <RecommendationGroup items={routineItems} />,
+                  },
+                ]}
+              />
+            ) : null}
+          </>
         ) : (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无汇总建议" />
         )}
-        <InfoList title="需要补充的信息" items={[...(result.requiredFollowUpQuestions ?? []), ...(result.followUpQuestions ?? [])]} />
       </Space>
     </Card>
   );
+}
+
+function RecommendationGroup({ title, items, empty }: { title?: string; items: IntegratedDiagnosisResult['integrativeRecommendations']; empty?: string }) {
+  const visibleItems = items.filter((item) => !containsFallbackText(item));
+  if (!visibleItems.length) {
+    return empty ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={empty} /> : null;
+  }
+  return (
+    <section className="diagnosis-priority-group">
+      {title ? <Typography.Title level={5}>{title}</Typography.Title> : null}
+      <Space direction="vertical" size={10} className="diagnosis-mini-list">
+        {visibleItems.map((item, index) => (
+          <RecommendationItem item={item} key={`${item.title}-${index}`} />
+        ))}
+      </Space>
+    </section>
+  );
+}
+
+function RecommendationItem({ item }: { item: IntegratedDiagnosisResult['integrativeRecommendations'][number] }) {
+  return (
+    <div className={`diagnosis-recommendation-card priority-${item.priority}`}>
+      <Space size={8} wrap>
+        <Typography.Text strong>{item.title}</Typography.Text>
+        <Tag color={priorityColor(item.priority)}>{PRIORITY_LABELS[item.priority] ?? item.priority}</Tag>
+      </Space>
+      <Typography.Paragraph>{cleanFallbackText(item.details, '请结合症状变化采取保守安全措施。')}</Typography.Paragraph>
+      <Typography.Text type="secondary">{CATEGORY_LABELS[item.category] ?? item.category}</Typography.Text>
+    </div>
+  );
+}
+
+function IntegratedDetailCard({ result }: { result: IntegratedDiagnosisResult }) {
+  return (
+    <Card className="diagnosis-advice-card integrated" bordered={false}>
+      <AdviceHeader icon={<CheckCircleOutlined />} eyebrow="汇总详情" title="依据与补充信息" />
+      <Space direction="vertical" size={12} className="diagnosis-advice-body">
+        <InfoList title="需要补充的信息" items={getFollowUpQuestions(result)} />
+        <InfoList title="分歧处理" items={result.conflictResolution} />
+        <MiniAdviceList
+          title="红旗信号覆盖"
+          empty="暂无红旗信号记录"
+          items={(result.redFlagCoverage ?? []).map((item) => ({
+            title: item.category,
+            tag: item.positive ? '需关注' : item.checked ? '已排查' : '待确认',
+            content: item.note,
+          }))}
+        />
+      </Space>
+    </Card>
+  );
+}
+
+function ActionChecklist({ result, western }: { result: IntegratedDiagnosisResult; western?: WesternAssessment | null }) {
+  const recommendations = (result.integrativeRecommendations ?? []).filter((item) => !containsFallbackText(item));
+  const immediate = recommendations.find((item) => item.priority === 'immediate');
+  const soon = recommendations.find((item) => item.priority === 'soon');
+  const routine = recommendations.find((item) => item.priority === 'routine');
+  const seekCare = filterFallbackItems(western?.seekCareCriteria ?? []);
+  const emergencyReasons = filterFallbackItems(result.immediateCareReasons ?? []);
+  const redFlags = filterFallbackItems((result.redFlagCoverage ?? []).filter((item) => item.positive).map((item) => item.note));
+  const emergencyText =
+    emergencyReasons[0] ||
+    redFlags[0] ||
+    seekCare[0] ||
+    (result.mustSeekImmediateCare || result.safetyLevel === 'emergency' || result.safetyLevel === 'urgent'
+      ? '症状明显加重、出现红旗信号或无法自行判断时，立即线下就医。'
+      : '出现明显加重、持续不缓解或新的危险症状时，及时线下就医。');
+
+  const items = [
+    {
+      title: '今天',
+      description: summarizeAction(immediate, '观察症状变化，记录体温、心率、疼痛/不适程度和诱因。'),
+    },
+    {
+      title: '本周',
+      description: summarizeAction(soon, '如果不适持续或反复，预约相应科室做进一步评估。'),
+    },
+    {
+      title: '日常',
+      description: summarizeAction(routine, '保持规律作息，避免过劳，按身体反应逐步调整生活方式。'),
+    },
+    {
+      title: '紧急情况',
+      description: emergencyText,
+    },
+  ].filter((item) => Boolean(item.description));
+
+  return (
+    <Card className="diagnosis-action-card" bordered={false}>
+      <div className="diagnosis-section-title">
+        <CheckCircleOutlined />
+        <Typography.Title level={4}>行动清单</Typography.Title>
+      </div>
+      <Steps
+        direction="vertical"
+        size="small"
+        className="diagnosis-action-steps"
+        items={items.map((item) => ({
+          title: item.title,
+          description: item.description,
+        }))}
+      />
+    </Card>
+  );
+}
+
+function summarizeAction(item: IntegratedDiagnosisResult['integrativeRecommendations'][number] | undefined, fallback: string) {
+  if (!item) return fallback;
+  const details = cleanFallbackText(item.details, fallback);
+  return `${item.title}：${details}`;
 }
 
 function AdviceHeader({ icon, eyebrow, title }: { icon: ReactNode; eyebrow: string; title: string }) {
@@ -242,14 +406,8 @@ function UnavailableNotice({ message }: { message: string }) {
   return <Alert type="warning" showIcon message={message} description="可稍后重试，或检查模型、API Key、Base URL 等配置；当前不把降级内容当作正式建议展示。" />;
 }
 
-function FocusCard({ icon, label, value, tone }: { icon: ReactNode; label: string; value: string; tone?: string }) {
-  return (
-    <div className={`diagnosis-focus-card ${tone ? `tone-${tone}` : ''}`}>
-      <div className="diagnosis-focus-icon">{icon}</div>
-      <Typography.Text type="secondary">{label}</Typography.Text>
-      <Typography.Paragraph>{value}</Typography.Paragraph>
-    </div>
-  );
+function getFollowUpQuestions(result: IntegratedDiagnosisResult) {
+  return filterFallbackItems([...(result.requiredFollowUpQuestions ?? []), ...(result.followUpQuestions ?? [])]).filter((item, index, array) => array.indexOf(item) === index);
 }
 
 function MiniAdviceList({ title, empty, items }: { title: string; empty: string; items: Array<{ title: string; tag?: string; content: string }> }) {

@@ -1,14 +1,28 @@
-import { Button, Card, Col, Empty, List, Progress, Row, Space, Spin, Statistic, Tag, Typography } from 'antd';
+import { useMemo, useState } from 'react';
+import { Button, Card, Col, Empty, List, Row, Space, Spin, Statistic, Tag, Typography } from 'antd';
 import type { AgentRun } from '../api/agentRuns';
 import type { HealthInsight, HealthRecord } from '../api/health';
+import { CompactTrendChart } from '../components/charts/CompactTrendChart';
+import { TrendDetailModal } from '../components/charts/TrendDetailModal';
 import { SnapshotCard } from '../components/snapshots/SnapshotCard';
 import { useAgentRuns } from '../hooks/useAgentRuns';
 import { useHealthInsights } from '../hooks/useHealthInsights';
 import { useHealthRecords } from '../hooks/useHealthRecords';
+import type { ChartKind } from '../lib/chart-data';
+import { aggregateTrendData } from '../lib/chart-data';
 
 export function DashboardPage() {
   const { records } = useHealthRecords();
+  const [selectedChart, setSelectedChart] = useState<ChartKind | null>(null);
   const data = records.data ?? [];
+  const weeklyTrends = useMemo(
+    () => ({
+      mood: aggregateTrendData(data, 'mood', 'week'),
+      sleep: aggregateTrendData(data, 'sleep', 'week'),
+      exercise: aggregateTrendData(data, 'exercise', 'week'),
+    }),
+    [data],
+  );
   const mood = getTodayMood(data);
   const sleep = getSleepTrend(data);
   const exercise = getExerciseFrequency(data);
@@ -31,6 +45,7 @@ export function DashboardPage() {
             <Space wrap size={[4, 4]}>
               {mood.tags.map((tag) => <Tag key={tag} color="purple">{tag}</Tag>)}
             </Space>
+            <CompactTrendChart type="mood" data={weeklyTrends.mood} onExpand={setSelectedChart} />
           </Card>
         </Col>
         <Col xs={24} md={8}>
@@ -39,7 +54,7 @@ export function DashboardPage() {
             <div className="dashboard-metric-detail">
               {sleep.latestHours !== undefined ? `最近一次 ${sleep.latestHours} 小时${sleep.diffText ? ` · ${sleep.diffText}` : ''}` : '近 7 天暂无睡眠记录'}
             </div>
-            <MiniMetricBars data={sleep.dailyHours} max={Math.max(8, ...sleep.dailyHours.map((item) => item.value))} />
+            <CompactTrendChart type="sleep" data={weeklyTrends.sleep} onExpand={setSelectedChart} />
           </Card>
         </Col>
         <Col xs={24} md={8}>
@@ -48,18 +63,14 @@ export function DashboardPage() {
             <div className="dashboard-metric-detail">
               {exercise.count ? `共 ${exercise.totalMinutes} 分钟 · ${exercise.count} 条记录` : '近 7 天还没有运动记录'}
             </div>
-            <Progress
-              className="dashboard-mini-progress"
-              percent={Math.round((exercise.activeDays / 7) * 100)}
-              showInfo={false}
-              strokeColor={{ '0%': '#38bdf8', '100%': '#6d5dfc' }}
-            />
+            <CompactTrendChart type="exercise" data={weeklyTrends.exercise} onExpand={setSelectedChart} />
           </Card>
         </Col>
         <Col xs={24} xl={14}><HealthInsightsPanel /></Col>
         <Col xs={24} xl={10}><AgentRunsPanel /></Col>
         <Col span={24}>{records.isLoading ? <Spin /> : <SnapshotCard />}</Col>
       </Row>
+      <TrendDetailModal open={selectedChart !== null} type={selectedChart} records={data} onClose={() => setSelectedChart(null)} />
     </>
   );
 }
