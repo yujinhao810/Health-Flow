@@ -1,13 +1,28 @@
-import { Alert, Button, Col, List, Popconfirm, Row, Space, Typography, message } from 'antd';
+import { Alert, Button, Card, Col, Empty, List, Popconfirm, Row, Space, Tag, Typography, message } from 'antd';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { DiagnosisInput } from '@health/shared';
+import type { DiagnosisInput, DiagnosisSafetyLevel } from '@health/shared';
+import { GradientText } from '../components/effects/GradientText';
 import { DiagnosisForm } from '../components/diagnosis/DiagnosisForm';
 import { useDiagnosis } from '../hooks/useDiagnosis';
 
+const safetyLabels: Record<DiagnosisSafetyLevel, string> = {
+  emergency: '立即就医',
+  urgent: '尽快就医',
+  clinician_recommended: '建议咨询医生',
+  supportive: '支持观察',
+};
+
+const safetyColors: Record<DiagnosisSafetyLevel, string> = {
+  emergency: 'red',
+  urgent: 'orange',
+  clinician_recommended: 'blue',
+  supportive: 'green',
+};
+
 export function DiagnosisPage() {
   const navigate = useNavigate();
-  const { history, create, remove } = useDiagnosis();
+  const { history, create, followUp, remove } = useDiagnosis();
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function handleSubmit(input: DiagnosisInput) {
@@ -39,10 +54,12 @@ export function DiagnosisPage() {
 
   return (
     <>
-      <div className="page-intro">
-        <Typography.Title level={2}>中西医结合辅助分诊</Typography.Title>
+      <div className="page-intro diagnosis-page-intro">
+        <Typography.Title className="page-gradient-title" level={2}>
+          <GradientText pauseOnHover>中西医结合辅助分诊</GradientText>
+        </Typography.Title>
         <Typography.Paragraph type="secondary">
-          先由西医与中医 Agent 初评，再相互质询，最后由决策者 Agent 按安全优先原则仲裁。信息不足时会先提示需要补充的问题。
+          先用一句话描述不适，系统会整理关键信息并提示少量补充问题，再由西医与中医 Agent 初评、质询和仲裁。
         </Typography.Paragraph>
       </div>
       <Alert
@@ -54,49 +71,70 @@ export function DiagnosisPage() {
       />
       <Row gutter={[18, 18]}>
         <Col xs={24} xl={12}>
-          <DiagnosisForm loading={create.isPending} onSubmit={handleSubmit} />
+          <DiagnosisForm
+            loading={create.isPending}
+            followUpLoading={followUp.isPending}
+            onGenerateFollowUp={(input) => followUp.mutateAsync(input)}
+            onSubmit={handleSubmit}
+          />
         </Col>
         <Col xs={24} xl={12}>
-          <List
-            bordered
-            loading={history.isLoading}
-            header="历史记录"
-            dataSource={history.data ?? []}
-            locale={{ emptyText: '暂无辅助分诊记录' }}
-            renderItem={(item) => (
-              <List.Item
-                actions={[
-                  <Button key="view" type="link" onClick={() => navigate(`/diagnosis/${item.id}`)}>
-                    查看
-                  </Button>,
-                  <Popconfirm
-                    key="delete"
-                    title="删除这条辅助分诊记录？"
-                    description="删除后该汇总建议将无法恢复。"
-                    okText="删除"
-                    cancelText="取消"
-                    okButtonProps={{ danger: true }}
-                    onConfirm={() => handleDelete(item.id)}
-                  >
-                    <Button type="link" danger loading={deletingId === item.id}>
-                      删除
-                    </Button>
-                  </Popconfirm>,
-                ]}
-              >
-                <List.Item.Meta
-                  title={item.integratedOutput?.summary || item.input.chiefComplaint}
-                  description={
-                    <Space size={8} wrap>
-                      <Typography.Text type="secondary">{new Date(item.createdAt).toLocaleString()}</Typography.Text>
-                      <Typography.Text type="secondary">{item.safetyLevel ?? item.status}</Typography.Text>
-                      {item.generationStatus?.degraded ? <Typography.Text type="warning">部分生成</Typography.Text> : null}
-                    </Space>
-                  }
+          <Card title="历史记录" extra={<span className="soft-card-extra">辅助分诊记录</span>}>
+            {history.isLoading ? (
+              <List loading />
+            ) : (history.data ?? []).length === 0 ? (
+              <Empty description="暂无辅助分诊记录" />
+            ) : (
+              <div className="record-timeline-scroll">
+                <List
+                  dataSource={history.data ?? []}
+                  renderItem={(item) => (
+                    <List.Item
+                      className="record-list-item"
+                      actions={[
+                        <Button key="view" type="link" onClick={() => navigate(`/diagnosis/${item.id}`)}>
+                          查看
+                        </Button>,
+                        <Popconfirm
+                          key="delete"
+                          title="删除这条辅助分诊记录？"
+                          description="删除后该汇总建议将无法恢复。"
+                          okText="删除"
+                          cancelText="取消"
+                          okButtonProps={{ danger: true }}
+                          onConfirm={() => handleDelete(item.id)}
+                        >
+                          <Button type="link" danger loading={deletingId === item.id}>
+                            删除
+                          </Button>
+                        </Popconfirm>,
+                      ]}
+                    >
+                      <List.Item.Meta
+                        title={
+                          <Space wrap>
+                            <Tag color={item.safetyLevel ? safetyColors[item.safetyLevel] : 'default'}>
+                              {item.safetyLevel ? safetyLabels[item.safetyLevel] : item.status}
+                            </Tag>
+                            <Typography.Text>{new Date(item.createdAt).toLocaleString()}</Typography.Text>
+                            {item.generationStatus?.degraded ? <Tag color="gold">部分生成</Tag> : null}
+                          </Space>
+                        }
+                        description={
+                          <Space direction="vertical" size={4}>
+                            <Typography.Text>{item.integratedOutput?.summary || item.input.chiefComplaint}</Typography.Text>
+                            {item.input.chiefComplaint && item.integratedOutput?.summary ? (
+                              <Typography.Text type="secondary">主诉：{item.input.chiefComplaint}</Typography.Text>
+                            ) : null}
+                          </Space>
+                        }
+                      />
+                    </List.Item>
+                  )}
                 />
-              </List.Item>
+              </div>
             )}
-          />
+          </Card>
         </Col>
       </Row>
     </>

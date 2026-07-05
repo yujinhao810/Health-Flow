@@ -1,0 +1,34 @@
+.animated-gradient-text {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+}
+
+.animated-gradient-text.with-border {
+  padding: 4px 10px;
+  border-radius: 8px;
+}
+
+.animated-gradient-text .gradient-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0.24;
+  pointer-events: none;
+}
+
+.animated-gradient-text .text-content {
+  position: relative;
+  z-index: 1;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animated-gradient-text .gradient-overlay,
+  .animated-gradient-text .text-content {
+    background-position: 50% 50% !important;
+  }
+}

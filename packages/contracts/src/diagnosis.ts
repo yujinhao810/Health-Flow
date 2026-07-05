@@ -74,6 +74,42 @@ export const diagnosisInputSchema = z.object({
 });
 export type DiagnosisInput = z.infer<typeof diagnosisInputSchema>;
 
+export const diagnosisFollowUpRequestSchema = z.object({
+  chiefComplaint: z.string().min(1).max(1000),
+  symptomName: z.string().optional(),
+  bodyPart: z.string().optional(),
+  severity: z.number().min(1).max(10).optional(),
+  duration: z.string().optional(),
+  redFlagSigns: z.array(z.string()).default([]),
+  includeRecentHealthContext: z.boolean().default(true),
+});
+export type DiagnosisFollowUpRequest = z.infer<typeof diagnosisFollowUpRequestSchema>;
+
+export const diagnosisFollowUpQuestionSchema = z.object({
+  id: z.string(),
+  question: z.string(),
+  reason: z.string(),
+  priority: z.enum(['safety', 'symptom_detail', 'medical_context', 'tcm_observation', 'lifestyle']),
+  answerHint: z.string(),
+});
+export type DiagnosisFollowUpQuestion = z.infer<typeof diagnosisFollowUpQuestionSchema>;
+
+export const diagnosisFollowUpResultSchema = z.object({
+  summary: z.string(),
+  questions: z.array(diagnosisFollowUpQuestionSchema).min(1).max(5),
+  missingFields: z.array(z.string()).default([]),
+  source: z.enum(['agent', 'fallback']).optional(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
+  usage: z
+    .object({
+      inputTokens: z.number().optional(),
+      outputTokens: z.number().optional(),
+    })
+    .optional(),
+});
+export type DiagnosisFollowUpResult = z.infer<typeof diagnosisFollowUpResultSchema>;
+
 export const redFlagFindingSchema = z.object({
   category: z.string(),
   reason: z.string(),
@@ -332,6 +368,33 @@ export const commonRedFlagJsonSchema = {
     urgency: { type: 'string', enum: ['emergency', 'urgent', 'routine', 'self_care'] },
   },
   required: ['category', 'reason', 'matchedEvidence', 'urgency'],
+} as const;
+
+export const diagnosisFollowUpResultJsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    summary: { type: 'string' },
+    questions: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 5,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string' },
+          question: { type: 'string' },
+          reason: { type: 'string' },
+          priority: { type: 'string', enum: ['safety', 'symptom_detail', 'medical_context', 'tcm_observation', 'lifestyle'] },
+          answerHint: { type: 'string' },
+        },
+        required: ['id', 'question', 'reason', 'priority', 'answerHint'],
+      },
+    },
+    missingFields: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['summary', 'questions', 'missingFields'],
 } as const;
 
 export const westernAssessmentJsonSchema = {

@@ -100,11 +100,26 @@ function collectText(input: DiagnosisInput) {
 }
 
 function hasAny(text: string, keywords: string[]) {
-  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+  return matched(text, keywords).length > 0;
 }
 
 function matched(text: string, keywords: string[]) {
-  return keywords.filter((keyword) => text.includes(keyword.toLowerCase()));
+  return keywords.filter((keyword) => hasAffirmedKeyword(text, keyword.toLowerCase()));
+}
+
+function hasAffirmedKeyword(text: string, keyword: string) {
+  let index = text.indexOf(keyword);
+  while (index >= 0) {
+    if (!isNegatedNear(text, index)) return true;
+    index = text.indexOf(keyword, index + keyword.length);
+  }
+  return false;
+}
+
+function isNegatedNear(text: string, keywordIndex: number) {
+  const before = text.slice(Math.max(0, keywordIndex - 12), keywordIndex);
+  const compactBefore = before.replace(/\s+/g, '');
+  return /(?:无|没有|沒?有|否认|未见|未出现|未伴|不伴|不伴有|并无|並無|并未|不是|并非|未诉|未提及|无明显|没有明显)$/.test(compactBefore);
 }
 
 function addFinding(findings: RedFlagFinding[], category: string, reason: string, matchedEvidence: string[]) {

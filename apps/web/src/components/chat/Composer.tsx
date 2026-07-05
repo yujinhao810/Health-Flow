@@ -1,6 +1,6 @@
-import { PaperClipOutlined, SendOutlined, StopOutlined } from '@ant-design/icons';
+import { ArrowUpOutlined, PaperClipOutlined, SearchOutlined, StopOutlined } from '@ant-design/icons';
 import type { ChatAttachment } from '@health/shared';
-import { Button, Input, Switch, Tooltip, Upload, message } from 'antd';
+import { Button, Input, Tooltip, Upload, message } from 'antd';
 import type { KeyboardEvent } from 'react';
 import { useState } from 'react';
 import { uploadFile } from '../../api/chat';
@@ -55,36 +55,6 @@ export function Composer({
       ) : null}
 
       <div className="chat-composer-shell">
-        <Tooltip title="上传图片或资料">
-          <Upload
-            showUploadList={false}
-            maxCount={1}
-            accept=".pdf,.doc,.docx,.txt,.md,.markdown,.json,.csv,.png,.jpg,.jpeg,.webp,.gif,.bmp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,application/json,text/csv,image/*"
-            beforeUpload={async (file) => {
-              setUploading(true);
-              const purpose = getUploadPurpose(file);
-              try {
-                const uploaded = await uploadFile(file, purpose);
-                if (uploaded.purpose === 'knowledge_source') {
-                  onKnowledgeUploaded?.();
-                  message.success('资料已入库，可以直接提问');
-                } else {
-                  setAttachments((current) => [...current, uploaded].slice(0, 6));
-                  message.success('附件已上传，将随本轮消息发送');
-                }
-              } catch (uploadError) {
-                message.error(uploadError instanceof Error ? uploadError.message : '上传失败');
-              } finally {
-                setUploading(false);
-              }
-              return Upload.LIST_IGNORE;
-            }}
-            disabled={streaming || uploading}
-          >
-            <Button className="chat-upload-button" icon={<PaperClipOutlined />} loading={uploading} disabled={streaming} aria-label="上传附件" />
-          </Upload>
-        </Tooltip>
-
         <Input.TextArea
           className="chat-composer-input"
           value={value}
@@ -92,23 +62,61 @@ export function Composer({
           onKeyDown={handleKeyDown}
           autoSize={{ minRows: 2, maxRows: 4 }}
           disabled={streaming}
-          placeholder="说说你今天的状态，或问我最近健康记录有什么变化..."
+          placeholder="给 HealthFlow 发送消息..."
         />
 
-        <label className="chat-rag-toggle">
-          <span>知识库</span>
-          <Switch size="small" checked={ragEnabled} onChange={setRagEnabled} disabled={streaming} />
-        </label>
+        <div className="chat-composer-toolbar">
+          <div className="chat-composer-modes">
+            <button
+              className={`chat-mode-pill ${ragEnabled ? 'active' : ''}`}
+              type="button"
+              onClick={() => setRagEnabled(!ragEnabled)}
+              disabled={streaming}
+              aria-pressed={ragEnabled}
+            >
+              <SearchOutlined />
+              <span>知识库检索</span>
+            </button>
+          </div>
 
-        {streaming ? (
-          <Button className="chat-composer-action" danger icon={<StopOutlined />} onClick={onStop}>
-            停止
-          </Button>
-        ) : (
-          <Button className="chat-composer-action" type="primary" icon={<SendOutlined />} onClick={send} disabled={!trimmedValue || uploading}>
-            发送
-          </Button>
-        )}
+          <div className="chat-composer-actions">
+            <Tooltip title="上传图片或资料">
+              <Upload
+                showUploadList={false}
+                maxCount={1}
+                accept=".pdf,.doc,.docx,.txt,.md,.markdown,.json,.csv,.png,.jpg,.jpeg,.webp,.gif,.bmp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,application/json,text/csv,image/*"
+                beforeUpload={async (file) => {
+                  setUploading(true);
+                  const purpose = getUploadPurpose(file);
+                  try {
+                    const uploaded = await uploadFile(file, purpose);
+                    if (uploaded.purpose === 'knowledge_source') {
+                      onKnowledgeUploaded?.();
+                      message.success('资料已入库，可以直接提问');
+                    } else {
+                      setAttachments((current) => [...current, uploaded].slice(0, 6));
+                      message.success('附件已上传，将随本轮消息发送');
+                    }
+                  } catch (uploadError) {
+                    message.error(uploadError instanceof Error ? uploadError.message : '上传失败');
+                  } finally {
+                    setUploading(false);
+                  }
+                  return Upload.LIST_IGNORE;
+                }}
+                disabled={streaming || uploading}
+              >
+                <Button className="chat-upload-button" icon={<PaperClipOutlined />} loading={uploading} disabled={streaming} aria-label="上传附件" />
+              </Upload>
+            </Tooltip>
+
+            {streaming ? (
+              <Button className="chat-composer-action" danger icon={<StopOutlined />} onClick={onStop} aria-label="停止生成" />
+            ) : (
+              <Button className="chat-composer-action" type="primary" icon={<ArrowUpOutlined />} onClick={send} disabled={!trimmedValue || uploading} aria-label="发送" />
+            )}
+          </div>
+        </div>
       </div>
       <div className="chat-safety-note">我可以陪你梳理情绪，但不能替代医生或心理咨询师；若有紧急危险，请立刻联系当地紧急服务或可信任的人。</div>
     </div>

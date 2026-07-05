@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AppShell } from './layout/AppShell';
+import { AgentRunDetailPage } from './pages/AgentRunDetailPage';
 import { ChatPage } from './pages/ChatPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DiagnosisDetailPage } from './pages/DiagnosisDetailPage';
@@ -17,6 +18,7 @@ export const router = createBrowserRouter([
       { path: 'chat', element: <ChatPage /> },
       { path: 'diagnosis', element: <DiagnosisPage /> },
       { path: 'diagnosis/:id', element: <DiagnosisDetailPage /> },
+      { path: 'agent-runs/:id', element: <AgentRunDetailPage /> },
       { path: 'snapshots', element: <Navigate to="/" replace /> },
       { path: 'settings', element: <SettingsPage /> },
     ],

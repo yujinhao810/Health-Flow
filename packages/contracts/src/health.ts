@@ -20,8 +20,20 @@ export const moodPayloadSchema = z.object({
   tags: z.array(z.string()).default([]),
 });
 
+export const medicalMaterialSchema = z.object({
+  id: z.string().uuid(),
+  originalName: z.string().min(1),
+  mimeType: z.string().min(1),
+  sizeBytes: z.number().int().nonnegative(),
+  purpose: z.enum(['chat_attachment', 'knowledge_source']).optional(),
+  status: z.enum(['pending', 'ready', 'failed']).optional(),
+  contentUrl: z.string().optional(),
+  createdAt: z.string().datetime().optional(),
+});
+
 export const medicalPayloadSchema = z.object({
   visitType: z.string().min(1),
+  medicalMaterials: z.array(medicalMaterialSchema).default([]),
   diagnosis: z.string().optional(),
   medication: z.string().optional(),
   followUpAt: z.string().datetime().optional(),

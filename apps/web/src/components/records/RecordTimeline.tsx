@@ -1,7 +1,19 @@
+import { FilePdfOutlined, PictureOutlined } from '@ant-design/icons';
 import { Button, Card, Empty, List, Popconfirm, Space, Tag, Typography, message } from 'antd';
 import type { HealthRecordType } from '@health/shared';
+import { withAuthToken } from '../../api/client';
 import type { HealthRecord } from '../../api/health';
 import { useHealthRecords } from '../../hooks/useHealthRecords';
+import {
+  formatFileSize,
+  getMedicalDiagnosis,
+  getMedicalFollowUpAt,
+  getMedicalMaterials,
+  getMedicalMedication,
+  getMedicalVisitType,
+  isPdfMaterial,
+  type MedicalMaterial,
+} from '../../lib/medical-materials';
 
 const typeLabels: Record<HealthRecordType, string> = {
   sleep: '睡眠',
@@ -43,44 +55,80 @@ export function RecordTimeline() {
           <List
             dataSource={data}
             renderItem={(record) => (
-              <List.Item
-                className="record-list-item"
-                actions={[
-                  <Popconfirm
-                    key="delete"
-                    title="删除这条健康记录？"
-                    description="删除后最近记录和健康总览会更新，已生成的快照可能需要重新生成。"
-                    okText="删除"
-                    cancelText="取消"
-                    okButtonProps={{ danger: true }}
-                    onConfirm={() => handleDelete(record.id)}
-                  >
-                    <Button type="link" danger loading={remove.isPending}>
-                      删除
-                    </Button>
-                  </Popconfirm>,
-                ]}
-              >
-                <List.Item.Meta
-                  title={
-                    <Space wrap>
-                      <Tag color={typeColors[record.type]}>{typeLabels[record.type]}</Tag>
-                      <Typography.Text>{new Date(record.recordedAt).toLocaleString()}</Typography.Text>
-                    </Space>
-                  }
-                  description={
-                    <Space direction="vertical" size={4}>
-                      <Typography.Text>{formatRecord(record)}</Typography.Text>
-                      {record.note ? <Typography.Text type="secondary">备注：{record.note}</Typography.Text> : null}
-                    </Space>
-                  }
-                />
-              </List.Item>
+              <RecordTimelineItem record={record} deleting={remove.isPending} onDelete={handleDelete} />
             )}
           />
         </div>
       )}
     </Card>
+  );
+}
+
+function RecordTimelineItem({ record, deleting, onDelete }: { record: HealthRecord; deleting: boolean; onDelete: (id: string) => void }) {
+  const materials = record.type === 'medical' ? getMedicalMaterials(record.payload) : [];
+
+  return (
+    <List.Item
+      className="record-list-item"
+      actions={[
+        <Popconfirm
+          key="delete"
+          title="删除这条健康记录？"
+          description="删除后最近记录和健康总览会更新，已生成的快照可能需要重新生成。"
+          okText="删除"
+          cancelText="取消"
+          okButtonProps={{ danger: true }}
+          onConfirm={() => onDelete(record.id)}
+        >
+          <Button type="link" danger loading={deleting}>
+            删除
+          </Button>
+        </Popconfirm>,
+      ]}
+    >
+      <List.Item.Meta
+        title={
+          <Space wrap>
+            <Tag color={typeColors[record.type]}>{typeLabels[record.type]}</Tag>
+            <Typography.Text>{new Date(record.recordedAt).toLocaleString()}</Typography.Text>
+          </Space>
+        }
+        description={
+          <Space direction="vertical" size={6}>
+            <Typography.Text>{formatRecord(record)}</Typography.Text>
+            {materials.length ? <MedicalMaterialLinks materials={materials} /> : null}
+            {record.note ? <Typography.Text type="secondary">备注：{record.note}</Typography.Text> : null}
+          </Space>
+        }
+      />
+    </List.Item>
+  );
+}
+
+function MedicalMaterialLinks({ materials }: { materials: MedicalMaterial[] }) {
+  return (
+    <div className="record-material-links">
+      {materials.map((material) => {
+        const contentUrl = material.contentUrl ? withAuthToken(material.contentUrl) : undefined;
+        const content = (
+          <>
+            {isPdfMaterial(material) ? <FilePdfOutlined /> : <PictureOutlined />}
+            <span>{material.originalName}</span>
+            <em>{formatFileSize(material.sizeBytes)}</em>
+          </>
+        );
+
+        return contentUrl ? (
+          <a className="record-material-link" href={contentUrl} key={material.id} rel="noreferrer" target="_blank">
+            {content}
+          </a>
+        ) : (
+          <span className="record-material-link" key={material.id}>
+            {content}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
@@ -106,11 +154,13 @@ function formatRecord(record: HealthRecord) {
       return `心情：${score}${tags}`;
     }
     case 'medical': {
+      const materials = getMedicalMaterials(payload);
       const parts = [
-        typeof payload.visitType === 'string' ? payload.visitType : '就医记录',
-        typeof payload.diagnosis === 'string' && payload.diagnosis ? `诊断：${payload.diagnosis}` : undefined,
-        typeof payload.medication === 'string' && payload.medication ? `用药：${payload.medication}` : undefined,
-        typeof payload.followUpAt === 'string' ? `复诊：${new Date(payload.followUpAt).toLocaleString()}` : undefined,
+        getMedicalVisitType(payload),
+        getMedicalDiagnosis(payload) ? `诊断：${getMedicalDiagnosis(payload)}` : undefined,
+        getMedicalMedication(payload) ? `用药：${getMedicalMedication(payload)}` : undefined,
+        getMedicalFollowUpAt(payload) ? `复诊：${new Date(getMedicalFollowUpAt(payload)!).toLocaleString()}` : undefined,
+        materials.length ? `资料：${materials.length} 份` : undefined,
       ].filter(Boolean);
       return `就医：${parts.join(' · ')}`;
     }

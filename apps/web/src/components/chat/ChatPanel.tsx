@@ -1,4 +1,4 @@
-import { BookOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { BookOutlined, DeleteOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ChatAttachment } from '@health/shared';
 import { Button, Empty, Popconfirm, Spin, Typography, message } from 'antd';
 import { useEffect, useState } from 'react';
@@ -12,6 +12,7 @@ export function ChatPanel() {
   const { user } = useAuth();
   const [draft, setDraft] = useState('');
   const [knowledgeReloadKey, setKnowledgeReloadKey] = useState(0);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const {
     conversationId,
     conversations,
@@ -57,40 +58,59 @@ export function ChatPanel() {
   }
 
   return (
-    <div className="chat-layout">
-      <aside className="chat-sidebar">
-        <Button className="chat-new-button" type="primary" icon={<PlusOutlined />} onClick={handleStartNewConversation} disabled={streaming}>
-          新对话
-        </Button>
+    <div className={sidebarCollapsed ? 'chat-layout chat-layout-sidebar-collapsed' : 'chat-layout'}>
+      {sidebarCollapsed ? (
+        <Button
+          className="chat-sidebar-open-button"
+          type="primary"
+          shape="circle"
+          icon={<MenuUnfoldOutlined />}
+          aria-label="打开历史会话边栏"
+          onClick={() => setSidebarCollapsed(false)}
+        />
+      ) : (
+        <aside className="chat-sidebar">
+          <Button className="chat-new-button" type="primary" icon={<PlusOutlined />} onClick={handleStartNewConversation} disabled={streaming}>
+            新对话
+          </Button>
 
-        <div className="chat-sidebar-header">
-          <Typography.Text strong>历史会话</Typography.Text>
-        </div>
+          <div className="chat-sidebar-header">
+            <Typography.Text strong>历史会话</Typography.Text>
+            <Button
+              className="chat-sidebar-collapse-button"
+              type="text"
+              shape="circle"
+              icon={<MenuFoldOutlined />}
+              aria-label="收起历史会话边栏"
+              onClick={() => setSidebarCollapsed(true)}
+            />
+          </div>
 
-        <div className="chat-thread-list" aria-label="历史会话">
-          {loadingConversations ? (
-            <div className="chat-sidebar-state">
-              <Spin size="small" />
-            </div>
-          ) : conversations.length ? (
-            conversations.map((conversation) => (
-              <ThreadCard
-                key={conversation.id}
-                conversation={conversation}
-                active={conversation.id === conversationId}
-                disabled={streaming}
-                deleting={deletingConversationId === conversation.id}
-                onSelect={() => void selectConversation(conversation.id)}
-                onDelete={() => void handleDeleteConversation(conversation.id)}
-              />
-            ))
-          ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无历史会话" />
-          )}
-        </div>
+          <div className="chat-thread-list" aria-label="历史会话">
+            {loadingConversations ? (
+              <div className="chat-sidebar-state">
+                <Spin size="small" />
+              </div>
+            ) : conversations.length ? (
+              conversations.map((conversation) => (
+                <ThreadCard
+                  key={conversation.id}
+                  conversation={conversation}
+                  active={conversation.id === conversationId}
+                  disabled={streaming}
+                  deleting={deletingConversationId === conversation.id}
+                  onSelect={() => void selectConversation(conversation.id)}
+                  onDelete={() => void handleDeleteConversation(conversation.id)}
+                />
+              ))
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无历史会话" />
+            )}
+          </div>
 
-        <KnowledgeBasePanel reloadKey={knowledgeReloadKey} streaming={streaming} />
-      </aside>
+          <KnowledgeBasePanel reloadKey={knowledgeReloadKey} streaming={streaming} />
+        </aside>
+      )}
 
       <section className="chat-main">
         <MessageList

@@ -73,7 +73,8 @@ export class HealthAgentToolsService {
             note: { type: 'string', description: '可选备注，最多 2000 字。' },
             payload: {
               type: 'object',
-              description: '按 type 填写：sleep={startedAt,endedAt,quality?}; exercise={activity,durationMinutes,intensity?}; mood={score,tags}; medical={visitType,diagnosis?,medication?,followUpAt?}',
+              description:
+                '按 type 填写：sleep={startedAt,endedAt,quality?}; exercise={activity,durationMinutes,intensity?}; mood={score,tags}; medical={visitType,medicalMaterials?,diagnosis?(历史兼容),medication?,followUpAt?}',
             },
           },
           required: ['type', 'recordedAt', 'payload'],

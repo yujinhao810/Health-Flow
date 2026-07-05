@@ -1,6 +1,7 @@
 import { ApiOutlined, DatabaseOutlined, SkinOutlined, UserOutlined } from '@ant-design/icons';
 import { Card, Tabs, Typography } from 'antd';
 import { useSearchParams } from 'react-router-dom';
+import { GradientText } from '../components/effects/GradientText';
 import { AppearanceTab } from '../components/settings/AppearanceTab';
 import { DataTab } from '../components/settings/DataTab';
 import { ModelConfigTab } from '../components/settings/ModelConfigTab';
@@ -20,7 +21,9 @@ export function SettingsPage() {
   return (
     <>
       <div className="page-intro">
-        <Typography.Title level={2}>个人设置</Typography.Title>
+        <Typography.Title className="page-gradient-title" level={2}>
+          <GradientText pauseOnHover>个人设置</GradientText>
+        </Typography.Title>
         <Typography.Paragraph type="secondary">
           管理你的个人资料、模型能力、健康数据和界面偏好。
         </Typography.Paragraph>

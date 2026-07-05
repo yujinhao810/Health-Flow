@@ -1,8 +1,12 @@
-import { useMemo, useState } from 'react';
-import { Button, Card, Col, Empty, List, Row, Space, Spin, Statistic, Tag, Typography } from 'antd';
+import { useMemo, useState, type ReactNode } from 'react';
+import { FilePdfOutlined, FireOutlined, MedicineBoxOutlined, MoonOutlined, PictureOutlined, RightOutlined, SmileOutlined } from '@ant-design/icons';
+import { Button, Card, Col, Empty, Image, List, Modal, Row, Space, Spin, Statistic, Tag, Typography } from 'antd';
+import { Link } from 'react-router-dom';
 import type { AgentRun } from '../api/agentRuns';
+import { withAuthToken } from '../api/client';
 import type { HealthInsight, HealthRecord } from '../api/health';
 import { CompactTrendChart } from '../components/charts/CompactTrendChart';
+import { GradientText } from '../components/effects/GradientText';
 import { TrendDetailModal } from '../components/charts/TrendDetailModal';
 import { SnapshotCard } from '../components/snapshots/SnapshotCard';
 import { useAgentRuns } from '../hooks/useAgentRuns';
@@ -10,10 +14,31 @@ import { useHealthInsights } from '../hooks/useHealthInsights';
 import { useHealthRecords } from '../hooks/useHealthRecords';
 import type { ChartKind } from '../lib/chart-data';
 import { aggregateTrendData } from '../lib/chart-data';
+import {
+  formatFileSize,
+  getMedicalDiagnosis,
+  getMedicalFollowUpAt,
+  getMedicalMaterials,
+  getMedicalMedication,
+  getMedicalVisitType,
+  isImageMaterial,
+  isPdfMaterial,
+  type MedicalMaterial,
+} from '../lib/medical-materials';
+
+type MedicalRecordItem = {
+  record: HealthRecord;
+  visitType: string;
+  diagnosis?: string;
+  medication?: string;
+  followUpAt?: string;
+  materials: MedicalMaterial[];
+};
 
 export function DashboardPage() {
   const { records } = useHealthRecords();
   const [selectedChart, setSelectedChart] = useState<ChartKind | null>(null);
+  const [medicalOpen, setMedicalOpen] = useState(false);
   const data = records.data ?? [];
   const weeklyTrends = useMemo(
     () => ({
@@ -23,22 +48,26 @@ export function DashboardPage() {
     }),
     [data],
   );
+  const medicalRecords = useMemo(() => getMedicalRecordItems(data), [data]);
   const mood = getTodayMood(data);
   const sleep = getSleepTrend(data);
   const exercise = getExerciseFrequency(data);
+  const medical = getMedicalSummary(medicalRecords);
 
   return (
     <>
       <div className="page-intro">
-        <Typography.Title level={2}>健康总览</Typography.Title>
+        <Typography.Title className="page-gradient-title" level={2}>
+          <GradientText pauseOnHover>健康总览</GradientText>
+        </Typography.Title>
         <Typography.Paragraph type="secondary">
           Agent 会持续读取你的长期健康基线、近期变化和对话执行轨迹，把值得关注的信号放在这里。
         </Typography.Paragraph>
       </div>
       <Row gutter={[18, 18]}>
-        <Col xs={24} md={8}>
+        <Col xs={24} md={12} xl={6}>
           <Card className="metric-card">
-            <Statistic title="今日心情" value={mood.latestScore !== undefined ? `${mood.latestScore} / 10` : '待记录'} />
+            <Statistic title={<MetricTitle icon={<SmileOutlined />} text="今日心情" tone="mood" />} value={mood.latestScore !== undefined ? `${mood.latestScore} / 10` : '待记录'} />
             <div className="dashboard-metric-detail">
               {mood.latestScore !== undefined ? `今日平均 ${mood.averageScore ?? '-'} 分` : '今天还没有心情记录'}
             </div>
@@ -48,22 +77,46 @@ export function DashboardPage() {
             <CompactTrendChart type="mood" data={weeklyTrends.mood} onExpand={setSelectedChart} />
           </Card>
         </Col>
-        <Col xs={24} md={8}>
+        <Col xs={24} md={12} xl={6}>
           <Card className="metric-card">
-            <Statistic title="睡眠趋势" value={sleep.averageHours ?? '暂无数据'} suffix={sleep.averageHours !== undefined ? '小时' : undefined} />
+            <Statistic title={<MetricTitle icon={<MoonOutlined />} text="睡眠趋势" tone="sleep" />} value={sleep.averageHours ?? '暂无数据'} suffix={sleep.averageHours !== undefined ? '小时' : undefined} />
             <div className="dashboard-metric-detail">
               {sleep.latestHours !== undefined ? `最近一次 ${sleep.latestHours} 小时${sleep.diffText ? ` · ${sleep.diffText}` : ''}` : '近 7 天暂无睡眠记录'}
             </div>
             <CompactTrendChart type="sleep" data={weeklyTrends.sleep} onExpand={setSelectedChart} />
           </Card>
         </Col>
-        <Col xs={24} md={8}>
+        <Col xs={24} md={12} xl={6}>
           <Card className="metric-card">
-            <Statistic title="运动频率" value={exercise.count ? `${exercise.activeDays} / 7 天` : '暂无运动'} />
+            <Statistic title={<MetricTitle icon={<FireOutlined />} text="运动频率" tone="exercise" />} value={exercise.count ? `${exercise.activeDays} / 7 天` : '暂无运动'} />
             <div className="dashboard-metric-detail">
               {exercise.count ? `共 ${exercise.totalMinutes} 分钟 · ${exercise.count} 条记录` : '近 7 天还没有运动记录'}
             </div>
             <CompactTrendChart type="exercise" data={weeklyTrends.exercise} onExpand={setSelectedChart} />
+          </Card>
+        </Col>
+        <Col xs={24} md={12} xl={6}>
+          <Card className="metric-card dashboard-medical-card">
+            <Statistic
+              title={<MetricTitle icon={<MedicineBoxOutlined />} text="就医" tone="medical" />}
+              value={medical.recordCount ? `${medical.recordCount} 条记录` : '暂无记录'}
+            />
+            <div className="dashboard-metric-detail">
+              {medical.latest ? `最近一次 ${medical.latest.visitType} · ${formatTime(medical.latest.record.recordedAt)} · ${medical.latest.materials.length} 份资料` : '还没有保存就医记录'}
+            </div>
+            <div className="dashboard-medical-summary">
+              <span>
+                <strong>{medical.recordCount}</strong>
+                条就医记录
+              </span>
+              <span>
+                <strong>{medical.materialCount}</strong>
+                份上传资料
+              </span>
+            </div>
+            <Button className="dashboard-medical-action" type="primary" icon={<RightOutlined />} onClick={() => setMedicalOpen(true)} block>
+              查看就医资料
+            </Button>
           </Card>
         </Col>
         <Col xs={24} xl={14}><HealthInsightsPanel /></Col>
@@ -71,7 +124,138 @@ export function DashboardPage() {
         <Col span={24}>{records.isLoading ? <Spin /> : <SnapshotCard />}</Col>
       </Row>
       <TrendDetailModal open={selectedChart !== null} type={selectedChart} records={data} onClose={() => setSelectedChart(null)} />
+      <MedicalRecordsModal open={medicalOpen} records={medicalRecords} onClose={() => setMedicalOpen(false)} />
     </>
+  );
+}
+
+function MetricTitle({ icon, text, tone }: { icon: ReactNode; text: string; tone: 'mood' | 'sleep' | 'exercise' | 'medical' }) {
+  return (
+    <span className={`dashboard-metric-title dashboard-metric-title-${tone}`}>
+      <span className="dashboard-metric-title-icon">{icon}</span>
+      <span>{text}</span>
+    </span>
+  );
+}
+
+function MedicalRecordsModal({ open, records, onClose }: { open: boolean; records: MedicalRecordItem[]; onClose: () => void }) {
+  const materialCount = records.reduce((sum, item) => sum + item.materials.length, 0);
+
+  return (
+    <Modal
+      className="medical-records-modal"
+      footer={null}
+      open={open}
+      title={
+        <div className="medical-records-titlebar">
+          <div className="medical-records-title-main">
+            <span className="medical-records-title-icon">
+              <MedicineBoxOutlined />
+            </span>
+            <span>就医资料</span>
+          </div>
+          {records.length ? <Tag color="blue">{records.length} 条记录</Tag> : null}
+        </div>
+      }
+      width={920}
+      onCancel={onClose}
+    >
+      {records.length ? (
+        <Space direction="vertical" size={14} className="medical-records-content">
+          <div className="medical-records-overview">
+            <span>
+              <strong>{records.length}</strong>
+              条就医记录
+            </span>
+            <span>
+              <strong>{materialCount}</strong>
+              份上传资料
+            </span>
+          </div>
+          <List
+            className="medical-records-list"
+            dataSource={records}
+            renderItem={(item) => (
+              <List.Item className="medical-record-detail">
+                <div className="medical-record-detail-head">
+                  <Space wrap size={8}>
+                    <Tag color="blue">{item.visitType}</Tag>
+                    <Typography.Text strong>{new Date(item.record.recordedAt).toLocaleString()}</Typography.Text>
+                  </Space>
+                  <Typography.Text type="secondary">{item.materials.length} 份资料</Typography.Text>
+                </div>
+                <div className="medical-record-detail-body">
+                  {item.diagnosis ? <InfoLine label="历史诊断" value={item.diagnosis} /> : null}
+                  {item.medication ? <InfoLine label="用药记录" value={item.medication} /> : null}
+                  {item.followUpAt ? <InfoLine label="复诊时间" value={new Date(item.followUpAt).toLocaleString()} /> : null}
+                  {item.record.note ? <InfoLine label="备注" value={item.record.note} /> : null}
+                </div>
+                {item.materials.length ? (
+                  <MedicalMaterialGrid materials={item.materials} />
+                ) : (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="这条就医记录暂未上传资料" />
+                )}
+              </List.Item>
+            )}
+          />
+        </Space>
+      ) : (
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={
+            <Space direction="vertical" size={8}>
+              <Typography.Text>暂无就医记录</Typography.Text>
+              <Link to="/records" onClick={onClose}>
+                去健康记录中新增
+              </Link>
+            </Space>
+          }
+        />
+      )}
+    </Modal>
+  );
+}
+
+function InfoLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="medical-info-line">
+      <span>{label}</span>
+      <Typography.Text>{value}</Typography.Text>
+    </div>
+  );
+}
+
+function MedicalMaterialGrid({ materials }: { materials: MedicalMaterial[] }) {
+  return (
+    <div className="medical-material-grid">
+      {materials.map((material) => {
+        const contentUrl = material.contentUrl ? withAuthToken(material.contentUrl) : undefined;
+        return (
+          <div className="medical-material-card" key={material.id}>
+            <div className={`medical-material-preview ${isPdfMaterial(material) ? 'pdf' : 'image'}`}>
+              {contentUrl && isImageMaterial(material) ? (
+                <Image alt={material.originalName} height={56} src={contentUrl} width={56} preview={{ mask: '预览' }} />
+              ) : isPdfMaterial(material) ? (
+                <FilePdfOutlined />
+              ) : (
+                <PictureOutlined />
+              )}
+            </div>
+            <div className="medical-material-copy">
+              <Typography.Text strong ellipsis={{ tooltip: material.originalName }}>
+                {material.originalName}
+              </Typography.Text>
+              <Typography.Text type="secondary">{formatFileSize(material.sizeBytes)}</Typography.Text>
+            </div>
+            {contentUrl ? (
+              <a className="medical-material-open" href={contentUrl} rel="noreferrer" target="_blank">
+                打开
+              </a>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -81,7 +265,7 @@ function HealthInsightsPanel() {
 
   return (
     <Card
-      className="agent-insights-card"
+      className="agent-insights-card dashboard-equal-card"
       title="主动洞察"
       extra={<Button size="small" onClick={() => refresh.mutate()} loading={refresh.isPending}>刷新</Button>}
     >
@@ -134,7 +318,7 @@ function AgentRunsPanel() {
   const items = runs.data ?? [];
 
   return (
-    <Card className="agent-runs-card" title="最近 Agent 运行">
+    <Card className="agent-runs-card dashboard-equal-card" title="最近 Agent 运行">
       {runs.isLoading ? (
         <Spin />
       ) : items.length === 0 ? (
@@ -170,8 +354,36 @@ function AgentRunItem({ run }: { run: AgentRun }) {
         {steps.length} 个步骤{latestStep?.title ? ` · 最近：${latestStep.title}` : ''}
       </Typography.Text>
       {run.error ? <Typography.Text type="danger" className="agent-run-detail">{run.error}</Typography.Text> : null}
+      <Link className="agent-run-link" to={`/agent-runs/${run.id}`}>
+        查看运行详情
+      </Link>
     </div>
   );
+}
+
+function getMedicalRecordItems(records: HealthRecord[]): MedicalRecordItem[] {
+  return records
+    .filter((record) => record.type === 'medical')
+    .map((record) => ({
+      record,
+      visitType: getMedicalVisitType(record.payload),
+      diagnosis: getMedicalDiagnosis(record.payload),
+      medication: getMedicalMedication(record.payload),
+      followUpAt: getMedicalFollowUpAt(record.payload),
+      materials: getMedicalMaterials(record.payload),
+    }))
+    .sort((a, b) => new Date(b.record.recordedAt).getTime() - new Date(a.record.recordedAt).getTime());
+}
+
+function getMedicalSummary(records: MedicalRecordItem[]) {
+  const materials = records.flatMap((record) => record.materials);
+  return {
+    recordCount: records.length,
+    materialCount: materials.length,
+    pdfCount: materials.filter(isPdfMaterial).length,
+    imageCount: materials.filter(isImageMaterial).length,
+    latest: records[0],
+  };
 }
 
 function getTodayMood(records: HealthRecord[]) {

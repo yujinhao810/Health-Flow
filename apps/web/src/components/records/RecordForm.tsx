@@ -1,8 +1,13 @@
-import { Button, Card, DatePicker, Form, Input, InputNumber, Select, message } from 'antd';
+import { DeleteOutlined, FilePdfOutlined, PictureOutlined, UploadOutlined } from '@ant-design/icons';
+import { Button, Card, DatePicker, Form, Input, InputNumber, Select, Upload, message } from 'antd';
+import type { ChatAttachment } from '@health/shared';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import { createHealthRecordSchema, type CreateHealthRecordInput, type HealthRecordType } from '@health/shared';
+import { useRef, useState } from 'react';
+import { deleteUpload, uploadFile } from '../../api/chat';
 import { useHealthRecords } from '../../hooks/useHealthRecords';
+import { formatFileSize, isPdfMaterial, type MedicalMaterial } from '../../lib/medical-materials';
 
 const { RangePicker } = DatePicker;
 
@@ -18,7 +23,6 @@ type RecordFormValues = {
   score?: number;
   tags?: string[];
   visitType?: string;
-  diagnosis?: string;
   medication?: string;
   followUpAt?: Dayjs;
 };
@@ -60,10 +64,15 @@ const moodTagOptions = ['开心', '平静', '焦虑', '疲惫', '压力大', '�
 }));
 
 const visitTypeOptions = ['门诊', '复诊', '体检', '急诊', '咨询'].map((type) => ({ value: type, label: type }));
+const maxMedicalMaterials = 8;
 
 export function RecordForm() {
   const [form] = Form.useForm<RecordFormValues>();
   const type = Form.useWatch('type', form) ?? 'mood';
+  const [medicalMaterials, setMedicalMaterials] = useState<ChatAttachment[]>([]);
+  const [medicalUploading, setMedicalUploading] = useState(false);
+  const [removingMaterialId, setRemovingMaterialId] = useState<string>();
+  const pendingMedicalUploadCount = useRef(0);
   const { create } = useHealthRecords();
 
   function buildInput(values: RecordFormValues): CreateHealthRecordInput | null {
@@ -115,7 +124,7 @@ export function RecordForm() {
           type: 'medical',
           payload: {
             visitType: values.visitType ?? '',
-            diagnosis: values.diagnosis?.trim() || undefined,
+            medicalMaterials: medicalMaterials.map(toMedicalMaterialPayload),
             medication: values.medication?.trim() || undefined,
             followUpAt: values.followUpAt?.toISOString(),
           },
@@ -136,10 +145,54 @@ export function RecordForm() {
     create.mutate(parsed.data, {
       onSuccess: () => {
         message.success('健康记录已保存');
+        setMedicalMaterials([]);
         form.resetFields();
       },
       onError: (error) => message.error(error instanceof Error ? error.message : '保存失败，请稍后重试'),
     });
+  }
+
+  async function handleMedicalMaterialUpload(file: File) {
+    if (!isSupportedMedicalMaterial(file)) {
+      message.warning('仅支持上传图片或 PDF 文件');
+      return;
+    }
+
+    if (medicalMaterials.length + pendingMedicalUploadCount.current >= maxMedicalMaterials) {
+      message.warning(`最多上传 ${maxMedicalMaterials} 份就医资料`);
+      return;
+    }
+
+    pendingMedicalUploadCount.current += 1;
+    setMedicalUploading(true);
+    try {
+      const uploaded = await uploadFile(file, 'chat_attachment');
+      setMedicalMaterials((current) => {
+        if (current.length >= maxMedicalMaterials) {
+          void deleteUpload(uploaded.id);
+          return current;
+        }
+        return [...current, uploaded];
+      });
+      message.success('就医资料已上传');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '上传失败，请稍后重试');
+    } finally {
+      pendingMedicalUploadCount.current = Math.max(pendingMedicalUploadCount.current - 1, 0);
+      setMedicalUploading(pendingMedicalUploadCount.current > 0);
+    }
+  }
+
+  async function handleRemoveMedicalMaterial(id: string) {
+    setRemovingMaterialId(id);
+    try {
+      await deleteUpload(id);
+      setMedicalMaterials((current) => current.filter((item) => item.id !== id));
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '删除资料失败，请稍后重试');
+    } finally {
+      setRemovingMaterialId(undefined);
+    }
   }
 
   return (
@@ -198,8 +251,46 @@ export function RecordForm() {
             <Form.Item name="visitType" label="就医类型" rules={[{ required: true, message: '请选择或输入就医类型' }]}>
               <Select showSearch options={visitTypeOptions} />
             </Form.Item>
-            <Form.Item name="diagnosis" label="诊断结果">
-              <Input placeholder="例如：过敏、感冒、复查正常" />
+            <Form.Item label="上传就医资料" extra={`支持图片和 PDF 文件，最多 ${maxMedicalMaterials} 份`}>
+              <Upload
+                accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,application/pdf,.png,.jpg,.jpeg,.webp,.gif,.bmp,.pdf"
+                beforeUpload={async (file) => {
+                  await handleMedicalMaterialUpload(file);
+                  return Upload.LIST_IGNORE;
+                }}
+                disabled={medicalUploading || medicalMaterials.length >= maxMedicalMaterials}
+                maxCount={maxMedicalMaterials}
+                multiple
+                showUploadList={false}
+              >
+                <Button icon={<UploadOutlined />} loading={medicalUploading} disabled={medicalMaterials.length >= maxMedicalMaterials}>
+                  上传图片或 PDF
+                </Button>
+              </Upload>
+              {medicalMaterials.length ? (
+                <div className="medical-upload-list">
+                  {medicalMaterials.map((material) => (
+                    <div className="medical-upload-item" key={material.id}>
+                      <span className={`medical-upload-icon ${isPdfMaterial(material) ? 'pdf' : 'image'}`}>
+                        {isPdfMaterial(material) ? <FilePdfOutlined /> : <PictureOutlined />}
+                      </span>
+                      <span className="medical-upload-copy">
+                        <span className="medical-upload-name">{material.originalName}</span>
+                        <span className="medical-upload-meta">{formatFileSize(material.sizeBytes)}</span>
+                      </span>
+                      <Button
+                        aria-label={`删除 ${material.originalName}`}
+                        danger
+                        icon={<DeleteOutlined />}
+                        loading={removingMaterialId === material.id}
+                        size="small"
+                        type="text"
+                        onClick={() => void handleRemoveMedicalMaterial(material.id)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </Form.Item>
             <Form.Item name="medication" label="用药记录">
               <Input.TextArea rows={3} placeholder="记录药物名称、剂量或医生建议" />
@@ -219,4 +310,21 @@ export function RecordForm() {
       </Form>
     </Card>
   );
+}
+
+function isSupportedMedicalMaterial(file: File) {
+  return file.type.startsWith('image/') || file.type === 'application/pdf' || /\.(png|jpe?g|webp|gif|bmp|pdf)$/i.test(file.name);
+}
+
+function toMedicalMaterialPayload(material: ChatAttachment): MedicalMaterial {
+  return {
+    id: material.id,
+    originalName: material.originalName,
+    mimeType: material.mimeType,
+    sizeBytes: material.sizeBytes,
+    purpose: material.purpose,
+    status: material.status,
+    contentUrl: material.contentUrl,
+    createdAt: material.createdAt,
+  };
 }

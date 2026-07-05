@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createDiagnosis, deleteDiagnosis, getDiagnosis, listDiagnoses, type DiagnosisInput } from '../api/diagnosis';
+import { createDiagnosis, deleteDiagnosis, generateDiagnosisFollowUp, getDiagnosis, listDiagnoses, type DiagnosisFollowUpRequest, type DiagnosisInput } from '../api/diagnosis';
 
 export function useDiagnosis() {
   const queryClient = useQueryClient();
@@ -15,6 +15,9 @@ export function useDiagnosis() {
       queryClient.invalidateQueries({ queryKey: ['diagnoses'] });
     },
   });
+  const followUp = useMutation({
+    mutationFn: (input: DiagnosisFollowUpRequest) => generateDiagnosisFollowUp(input),
+  });
   const remove = useMutation({
     mutationFn: deleteDiagnosis,
     onSuccess: (_result, id) => {
@@ -22,7 +25,7 @@ export function useDiagnosis() {
       queryClient.removeQueries({ queryKey: ['diagnosis', id] });
     },
   });
-  return { history, create, remove };
+  return { history, create, followUp, remove };
 }
 
 export function useDiagnosisDetail(id?: string) {

@@ -2,6 +2,8 @@ import { LockOutlined, MailOutlined, UserOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Form, Input, Tabs, Typography, message } from 'antd';
 import { useState } from 'react';
 import type { LoginInput, RegisterInput } from '../api/auth';
+import { Iridescence } from '../components/effects/Iridescence';
+import { ShinyText } from '../components/effects/ShinyText';
 import { useAuth } from '../hooks/useAuth';
 
 export function AuthPage() {
@@ -38,8 +40,20 @@ export function AuthPage() {
 
   return (
     <main className="auth-screen">
+      <Iridescence color={[0.92, 0.96, 1]} speed={0.82} amplitude={0.22} aria-hidden="true" />
       <section className="auth-intro">
-        <Typography.Title className="auth-brand">HealthFlow：智慧健康助手</Typography.Title>
+        <Typography.Title className="auth-brand">
+          <ShinyText
+            text="HealthFlow：智慧健康助手"
+            className="auth-brand-shine"
+            color="#1d4ed8"
+            shineColor="#ffffff"
+            speed={2.8}
+            spread={112}
+            yoyo
+            pauseOnHover
+          />
+        </Typography.Title>
       </section>
       <Card className="auth-card">
         <Tabs

@@ -10,6 +10,11 @@ import { IntegrativeDiagnosisService } from './integrative-diagnosis.service';
 export class IntegrativeDiagnosisController {
   constructor(private readonly diagnosis: IntegrativeDiagnosisService) {}
 
+  @Post('follow-up')
+  generateFollowUp(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.diagnosis.generateFollowUp(user, body);
+  }
+
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() body: CreateDiagnosisDto) {
     return this.diagnosis.create(user, body);

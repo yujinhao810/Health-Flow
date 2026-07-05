@@ -85,4 +85,14 @@ export class AgentRunService {
       take: Math.min(Math.max(limit, 1), 100),
     });
   }
+
+  async get(user: AuthUser, id: string) {
+    return this.prisma.agentRun.findFirst({
+      where: { id, userId: user.id },
+      include: {
+        conversation: { select: { id: true, title: true, summary: true } },
+        diagnosisSession: { select: { id: true, status: true, safetyLevel: true, createdAt: true } },
+      },
+    });
+  }
 }

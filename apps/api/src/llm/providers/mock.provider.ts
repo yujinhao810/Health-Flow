@@ -61,6 +61,43 @@ function hash(value: string) {
 }
 
 function buildMockStructured(schemaName: string) {
+  if (schemaName === 'diagnosis_follow_up_questions') {
+    return {
+      summary: 'Mock 预问诊 Agent 已根据第一步描述生成需要补充的问题。',
+      questions: [
+        {
+          id: 'duration',
+          question: '症状从什么时候开始，持续多久了？',
+          reason: '病程长短会影响急性风险和就医优先级。',
+          priority: 'symptom_detail',
+          answerHint: '例如：3 小时、2 天、反复 1 个月。',
+        },
+        {
+          id: 'severity',
+          question: '如果用 1-10 分表示严重程度，现在大约是多少分？',
+          reason: '严重程度有助于判断是否需要尽快线下评估。',
+          priority: 'symptom_detail',
+          answerHint: '1 分很轻，10 分最严重。',
+        },
+        {
+          id: 'associated_symptoms',
+          question: '有没有发热、呕吐、胸闷、呼吸困难、出汗、皮疹或其他伴随症状？',
+          reason: '伴随症状能帮助排查红旗和判断方向。',
+          priority: 'safety',
+          answerHint: '没有也可以写“没有明显伴随症状”。',
+        },
+        {
+          id: 'medical_context',
+          question: '是否有慢病、正在用药、过敏史，或近期检查/诊断结果？',
+          reason: '基础病、用药和过敏史会影响安全边界。',
+          priority: 'medical_context',
+          answerHint: '例如：高血压、糖尿病、阿司匹林、青霉素过敏。',
+        },
+      ],
+      missingFields: ['duration', 'severity', 'associated_symptoms', 'medical_context'],
+    };
+  }
+
   if (schemaName === 'western_review_of_tcm') {
     return {
       referenceable: [

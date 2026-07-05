@@ -1,7 +1,7 @@
-import type { DiagnosisInput, DiagnosisSession } from '@health/shared';
+import type { DiagnosisFollowUpRequest, DiagnosisFollowUpResult, DiagnosisInput, DiagnosisSession } from '@health/shared';
 import { api } from './client';
 
-export type { DiagnosisInput, DiagnosisSession };
+export type { DiagnosisFollowUpRequest, DiagnosisFollowUpResult, DiagnosisInput, DiagnosisSession };
 
 export type DeleteDiagnosisResult = {
   id: string;
@@ -10,6 +10,10 @@ export type DeleteDiagnosisResult = {
 
 export function createDiagnosis(input: DiagnosisInput) {
   return api<DiagnosisSession>('/integrative-diagnosis', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function generateDiagnosisFollowUp(input: DiagnosisFollowUpRequest) {
+  return api<DiagnosisFollowUpResult>('/integrative-diagnosis/follow-up', { method: 'POST', body: JSON.stringify(input) });
 }
 
 export function listDiagnoses() {
