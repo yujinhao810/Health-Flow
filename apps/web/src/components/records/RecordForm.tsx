@@ -73,7 +73,7 @@ export function RecordForm() {
   const [medicalUploading, setMedicalUploading] = useState(false);
   const [removingMaterialId, setRemovingMaterialId] = useState<string>();
   const pendingMedicalUploadCount = useRef(0);
-  const { create } = useHealthRecords();
+  const { create } = useHealthRecords({ enabled: false });
 
   function buildInput(values: RecordFormValues): CreateHealthRecordInput | null {
     const common = {

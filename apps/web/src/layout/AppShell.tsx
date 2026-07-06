@@ -7,10 +7,11 @@ import {
   MenuUnfoldOutlined,
   MessageOutlined,
   SettingOutlined,
+  TeamOutlined,
   UserOutlined,
 } from '@ant-design/icons';
 import { Avatar, Button, Layout, Menu, Spin, Tooltip, Typography } from 'antd';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { getAvatarImageSrc } from '../api/auth';
 import { useAuth } from '../hooks/useAuth';
@@ -26,15 +27,28 @@ const navItems = [
   { key: '/settings', icon: <SettingOutlined />, label: '设置' },
 ];
 
-const menuItems = navItems.map((item) => ({ key: item.key, icon: item.icon, label: item.label }));
-
 export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, loading, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
-  const selectedKey = location.pathname.startsWith('/diagnosis') ? '/diagnosis' : location.pathname;
+  const visibleNavItems = useMemo(
+    () => (user?.role === 'admin' ? [...navItems, { key: '/admin/users', icon: <TeamOutlined />, label: '用户管理' }] : navItems),
+    [user?.role],
+  );
+  const menuItems = useMemo(() => visibleNavItems.map((item) => ({ key: item.key, icon: item.icon, label: item.label })), [visibleNavItems]);
+  const selectedKey = location.pathname.startsWith('/diagnosis')
+    ? '/diagnosis'
+    : location.pathname.startsWith('/admin/users')
+      ? '/admin/users'
+      : location.pathname;
   const avatarSrc = user ? getAvatarImageSrc(user.avatarUrl) : undefined;
+
+  useEffect(() => {
+    window.dispatchEvent(new Event('resize'));
+    const timer = window.setTimeout(() => window.dispatchEvent(new Event('resize')), 280);
+    return () => window.clearTimeout(timer);
+  }, [collapsed]);
 
   if (loading) {
     return (
@@ -81,7 +95,7 @@ export function AppShell() {
         </div>
         {collapsed ? (
           <nav className="compact-nav" aria-label="主导航">
-            {navItems.map((item) => (
+            {visibleNavItems.map((item) => (
               <Tooltip key={item.key} title={item.label} placement="right">
                 <Button
                   type="text"

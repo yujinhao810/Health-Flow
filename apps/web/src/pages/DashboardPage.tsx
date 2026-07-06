@@ -8,6 +8,7 @@ import type { HealthInsight, HealthRecord } from '../api/health';
 import { CompactTrendChart } from '../components/charts/CompactTrendChart';
 import { GradientText } from '../components/effects/GradientText';
 import { TrendDetailModal } from '../components/charts/TrendDetailModal';
+import { TimeWellnessCard } from '../components/dashboard/TimeWellnessCard';
 import { SnapshotCard } from '../components/snapshots/SnapshotCard';
 import { useAgentRuns } from '../hooks/useAgentRuns';
 import { useHealthInsights } from '../hooks/useHealthInsights';
@@ -65,6 +66,9 @@ export function DashboardPage() {
         </Typography.Paragraph>
       </div>
       <Row gutter={[18, 18]}>
+        <Col span={24}>
+          <TimeWellnessCard />
+        </Col>
         <Col xs={24} md={12} xl={6}>
           <Card className="metric-card">
             <Statistic title={<MetricTitle icon={<SmileOutlined />} text="今日心情" tone="mood" />} value={mood.latestScore !== undefined ? `${mood.latestScore} / 10` : '待记录'} />

@@ -1,9 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createDiagnosis, deleteDiagnosis, generateDiagnosisFollowUp, getDiagnosis, listDiagnoses, type DiagnosisFollowUpRequest, type DiagnosisInput } from '../api/diagnosis';
 
-export function useDiagnosis() {
+type UseDiagnosisOptions = {
+  historyEnabled?: boolean;
+};
+
+export function useDiagnosis(options: UseDiagnosisOptions = {}) {
   const queryClient = useQueryClient();
-  const history = useQuery({ queryKey: ['diagnoses'], queryFn: listDiagnoses });
+  const history = useQuery({
+    queryKey: ['diagnoses'],
+    queryFn: listDiagnoses,
+    enabled: options.historyEnabled ?? true,
+  });
   const create = useMutation({
     mutationFn: (input: DiagnosisInput) => createDiagnosis(input),
     onSuccess: (session) => {

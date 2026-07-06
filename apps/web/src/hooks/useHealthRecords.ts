@@ -1,9 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createHealthRecord, deleteHealthRecord, listHealthRecords } from '../api/health';
 
-export function useHealthRecords() {
+type UseHealthRecordsOptions = {
+  enabled?: boolean;
+};
+
+export function useHealthRecords(options: UseHealthRecordsOptions = {}) {
   const queryClient = useQueryClient();
-  const records = useQuery({ queryKey: ['health-records'], queryFn: () => listHealthRecords() });
+  const records = useQuery({
+    queryKey: ['health-records'],
+    queryFn: () => listHealthRecords(),
+    enabled: options.enabled ?? true,
+  });
   const create = useMutation({
     mutationFn: createHealthRecord,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['health-records'] }),

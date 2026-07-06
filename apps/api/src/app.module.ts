@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AgentRunsModule } from './agent-runs/agent-runs.module';
+import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { ChatModule } from './chat/chat.module';
 import { envSchema } from './config/env.schema';
@@ -23,6 +24,7 @@ import { UploadsModule } from './uploads/uploads.module';
     }),
     PrismaModule,
     AgentRunsModule,
+    AdminModule,
     AuthModule,
     LlmModule,
     SafetyModule,

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Alert, Button, Card, Checkbox, Col, Collapse, Form, Input, InputNumber, Radio, Row, Select, Slider, Space, Steps, Switch, Tag, Typography, message } from 'antd';
-import { CheckCircleOutlined, LeftOutlined, RightOutlined, SafetyCertificateOutlined, SendOutlined } from '@ant-design/icons';
+import { LeftOutlined, RightOutlined, SafetyCertificateOutlined, SendOutlined } from '@ant-design/icons';
 import { diagnosisInputSchema, type DiagnosisFollowUpQuestion, type DiagnosisFollowUpRequest, type DiagnosisFollowUpResult, type DiagnosisInput } from '@health/shared';
 
 type Props = {
@@ -210,8 +210,6 @@ function QuickDescribeStep({ values }: { values: FormValues }) {
         <Input.TextArea rows={5} showCount maxLength={1000} placeholder="例如：昨晚开始胃痛，今天饭后更明显，疼痛大约 6 分，没有发热和呕吐。" />
       </Form.Item>
 
-      <StructuredPreview values={values} />
-
       <Row gutter={[12, 0]}>
         <Col xs={24} md={12}>
           <Form.Item name="symptomName" label="主要不适标签">
@@ -301,24 +299,6 @@ function FollowUpStep({ followUp, error }: { followUp: DiagnosisFollowUpResult |
         ]}
       />
     </section>
-  );
-}
-
-function StructuredPreview({ values }: { values: FormValues }) {
-  const tags = buildPreviewTags(values);
-
-  return (
-    <div className="diagnosis-structured-preview">
-      <Space align="start" size={10}>
-        <CheckCircleOutlined className="diagnosis-preview-icon" />
-        <div>
-          <Typography.Text strong>已整理为会诊草稿</Typography.Text>
-          <div className="diagnosis-preview-tags">
-            {tags.length ? tags.map((tag) => <Tag key={tag}>{tag}</Tag>) : <Typography.Text type="secondary">填写描述后，系统会自动整理症状、时长和风险线索。</Typography.Text>}
-          </div>
-        </div>
-      </Space>
-    </div>
   );
 }
 
@@ -613,16 +593,6 @@ function formatFollowUpAnswers(questions: DiagnosisFollowUpQuestion[] | undefine
     })
     .filter((item): item is string => Boolean(item));
   return lines.length ? `预问诊 Agent 追问与用户回答：\n${lines.join('\n')}` : undefined;
-}
-
-function buildPreviewTags(values: FormValues) {
-  return [
-    valueToString(values.symptomName) ? `症状：${valueToString(values.symptomName)}` : undefined,
-    valueToString(values.duration) ? `时长：${valueToString(values.duration)}` : undefined,
-    valueToNumber(values.severity) ? `程度：${valueToNumber(values.severity)}/10` : undefined,
-    splitList(values.redFlagSigns).length ? `风险筛查：${splitList(values.redFlagSigns).length} 项` : undefined,
-    values.includeRecentHealthContext !== false ? '合并近期健康记录' : '不合并健康记录',
-  ].filter((item): item is string => Boolean(item));
 }
 
 function inferSymptomName(value: unknown) {

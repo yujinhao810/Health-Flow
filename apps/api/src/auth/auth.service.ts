@@ -1,8 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { User } from '@prisma/client';
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'crypto';
-import { mkdir, rm, writeFile } from 'fs/promises';
+import { mkdir, rm, stat, writeFile } from 'fs/promises';
 import { extname, join, resolve } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthUser } from './auth.types';
@@ -11,6 +11,9 @@ import { ChangePasswordDto, LoginDto, RegisterDto, UpdatePreferencesDto, UpdateP
 const PASSWORD_PREFIX = 'scrypt';
 const TOKEN_PREFIX = 'v1';
 const TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+const DEFAULT_ADMIN_EMAIL = 'admin@healthflow.local';
+const DEFAULT_ADMIN_PASSWORD = '12345678';
+const DEFAULT_ADMIN_DISPLAY_NAME = 'admin';
 const DEFAULT_AVATAR_DIR = resolve(process.cwd(), 'storage', 'avatars');
 const AVATAR_MIME_TYPES = new Map([
   ['image/png', '.png'],
@@ -20,11 +23,15 @@ const AVATAR_MIME_TYPES = new Map([
 ]);
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {}
+
+  async onModuleInit() {
+    await this.ensureDefaultAdmin();
+  }
 
   async register(input: RegisterDto) {
     const email = normalizeEmail(input.email);
@@ -69,8 +76,14 @@ export class AuthService {
     if (!user?.passwordHash || !verifyPassword(input.password, user.passwordHash)) {
       throw new UnauthorizedException('邮箱或密码不正确');
     }
+    if (user.disabledAt) throw new UnauthorizedException('账号已被禁用，请联系管理员');
 
-    return this.toAuthResult(user);
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+
+    return this.toAuthResult(updated);
   }
 
   async getUserFromToken(token: string) {
@@ -79,6 +92,7 @@ export class AuthService {
 
     const user = await this.prisma.user.findUnique({ where: { id: payload.userId } });
     if (!user) return null;
+    if (user.disabledAt) return null;
 
     return this.serializeUser(user);
   }
@@ -129,9 +143,17 @@ export class AuthService {
 
     const mimeType = getAvatarMimeType(filename);
     if (!mimeType) throw new NotFoundException('Avatar not found');
+    const storagePath = join(this.getAvatarUserDir(user.id), filename);
+
+    try {
+      const fileStat = await stat(storagePath);
+      if (!fileStat.isFile()) throw new Error('Avatar path is not a file');
+    } catch {
+      throw new NotFoundException('Avatar not found');
+    }
 
     return {
-      storagePath: join(this.getAvatarUserDir(user.id), filename),
+      storagePath,
       mimeType,
     };
   }
@@ -179,6 +201,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       displayName: user.displayName,
+      role: user.role,
       avatarUrl: user.avatarUrl,
       bio: user.bio,
       birthYear: user.birthYear,
@@ -188,6 +211,44 @@ export class AuthService {
       themeMode: user.themeMode,
       locale: user.locale,
     };
+  }
+
+  private async ensureDefaultAdmin() {
+    const existing = await this.prisma.user.findUnique({ where: { email: DEFAULT_ADMIN_EMAIL } });
+
+    if (existing) {
+      await this.prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          displayName: existing.displayName || DEFAULT_ADMIN_DISPLAY_NAME,
+          role: 'admin',
+          disabledAt: null,
+          passwordHash: existing.passwordHash || hashPassword(DEFAULT_ADMIN_PASSWORD),
+        },
+      });
+      await this.ensureDefaultLlmConfig(existing.id);
+      return;
+    }
+
+    const user = await this.prisma.user.create({
+      data: {
+        email: DEFAULT_ADMIN_EMAIL,
+        displayName: DEFAULT_ADMIN_DISPLAY_NAME,
+        role: 'admin',
+        passwordHash: hashPassword(DEFAULT_ADMIN_PASSWORD),
+        llmConfigs: {
+          create: {
+            provider: 'mock',
+            model: 'mock-health-assistant',
+            enabled: true,
+            ragEnabled: true,
+            ragTopK: 5,
+          },
+        },
+      },
+    });
+
+    await this.ensureDefaultLlmConfig(user.id);
   }
 
   private async ensureDefaultLlmConfig(userId: string) {
@@ -251,7 +312,7 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
-function hashPassword(password: string) {
+export function hashPassword(password: string) {
   const salt = randomBytes(16).toString('base64url');
   const hash = scryptSync(password, salt, 64).toString('base64url');
   return [PASSWORD_PREFIX, salt, hash].join(':');

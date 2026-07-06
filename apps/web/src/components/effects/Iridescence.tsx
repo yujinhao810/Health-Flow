@@ -66,10 +66,19 @@ export function Iridescence({
 
   useEffect(() => {
     if (!ctnDom.current) return undefined;
+    if (!canCreateWebGlContext()) return undefined;
 
     const ctn = ctnDom.current;
-    const renderer = new Renderer({ alpha: false, antialias: true });
+    let renderer: Renderer;
+
+    try {
+      renderer = new Renderer({ alpha: false, antialias: true });
+    } catch {
+      return undefined;
+    }
+
     const gl = renderer.gl;
+    if (!gl) return undefined;
     gl.clearColor(1, 1, 1, 1);
 
     let animateId = 0;
@@ -91,8 +100,10 @@ export function Iridescence({
 
     const resize = () => {
       const scale = Math.min(window.devicePixelRatio || 1, 2);
-      renderer.setSize(ctn.offsetWidth * scale, ctn.offsetHeight * scale);
-      program.uniforms.uResolution.value = new Color(gl.canvas.width, gl.canvas.height, gl.canvas.width / gl.canvas.height);
+      const width = Math.max(ctn.offsetWidth, 1);
+      const height = Math.max(ctn.offsetHeight, 1);
+      renderer.setSize(width * scale, height * scale);
+      program.uniforms.uResolution.value = new Color(gl.canvas.width, gl.canvas.height, gl.canvas.width / Math.max(gl.canvas.height, 1));
     };
 
     const mesh = new Mesh(gl, { geometry, program });
@@ -134,4 +145,18 @@ export function Iridescence({
   }, [color[0], color[1], color[2], speed, amplitude, mouseReact]);
 
   return <div ref={ctnDom} className="iridescence-container" {...rest} />;
+}
+
+function canCreateWebGlContext() {
+  if (typeof document === 'undefined') return false;
+
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
+    if (!gl) return false;
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return true;
+  } catch {
+    return false;
+  }
 }

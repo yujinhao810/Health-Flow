@@ -1,0 +1,5 @@
+ALTER TABLE "User"
+  ADD COLUMN "role" TEXT NOT NULL DEFAULT 'user',
+  ADD COLUMN "disabledAt" TIMESTAMP(3),
+  ADD COLUMN "lastLoginAt" TIMESTAMP(3);
+

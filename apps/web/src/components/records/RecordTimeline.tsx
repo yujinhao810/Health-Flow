@@ -1,4 +1,4 @@
-import { FilePdfOutlined, PictureOutlined } from '@ant-design/icons';
+import { FilePdfOutlined, PictureOutlined, UpOutlined } from '@ant-design/icons';
 import { Button, Card, Empty, List, Popconfirm, Space, Tag, Typography, message } from 'antd';
 import type { HealthRecordType } from '@health/shared';
 import { withAuthToken } from '../../api/client';
@@ -35,7 +35,11 @@ const intensityLabels: Record<string, string> = {
   high: '高强度',
 };
 
-export function RecordTimeline() {
+type RecordTimelineProps = {
+  onCollapse?: () => void;
+};
+
+export function RecordTimeline({ onCollapse }: RecordTimelineProps) {
   const { records, remove } = useHealthRecords();
   const data = records.data ?? [];
 
@@ -47,7 +51,20 @@ export function RecordTimeline() {
   }
 
   return (
-    <Card title="最近记录" extra={<span className="soft-card-extra">最近 200 条</span>}>
+    <Card
+      loading={records.isLoading}
+      title="最近记录"
+      extra={
+        <Space size={8}>
+          <span className="soft-card-extra">最近 200 条</span>
+          {onCollapse ? (
+            <Button size="small" icon={<UpOutlined />} onClick={onCollapse}>
+              收起
+            </Button>
+          ) : null}
+        </Space>
+      }
+    >
       {data.length === 0 ? (
         <Empty description="暂无记录，先写下一条温柔的健康观察吧" />
       ) : (

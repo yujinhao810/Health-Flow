@@ -47,7 +47,15 @@ export class AuthController {
     const file = await this.auth.getAvatarFile(user, filename);
     res.setHeader('Content-Type', file.mimeType);
     res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(filename)}`);
-    createReadStream(file.storagePath).pipe(res);
+    const stream = createReadStream(file.storagePath);
+    stream.on('error', () => {
+      if (!res.headersSent) {
+        res.status(404).end();
+        return;
+      }
+      res.end();
+    });
+    stream.pipe(res);
   }
 
   @Post('change-password')

@@ -1,3 +1,4 @@
+import { HistoryOutlined, UpOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Col, Empty, List, Popconfirm, Row, Space, Tag, Typography, message } from 'antd';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -22,7 +23,8 @@ const safetyColors: Record<DiagnosisSafetyLevel, string> = {
 
 export function DiagnosisPage() {
   const navigate = useNavigate();
-  const { history, create, followUp, remove } = useDiagnosis();
+  const [showHistory, setShowHistory] = useState(false);
+  const { history, create, followUp, remove } = useDiagnosis({ historyEnabled: showHistory });
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function handleSubmit(input: DiagnosisInput) {
@@ -69,74 +71,102 @@ export function DiagnosisPage() {
         message="安全优先"
         description="如出现胸痛、呼吸困难、口角歪斜/单侧无力、意识障碍、大量出血、严重过敏、孕期急症或自伤风险，请不要等待 AI 建议，立即联系急救服务或线下就医。"
       />
-      <Row gutter={[18, 18]}>
-        <Col xs={24} xl={12}>
-          <DiagnosisForm
-            loading={create.isPending}
-            followUpLoading={followUp.isPending}
-            onGenerateFollowUp={(input) => followUp.mutateAsync(input)}
-            onSubmit={handleSubmit}
-          />
-        </Col>
-        <Col xs={24} xl={12}>
-          <Card title="历史记录" extra={<span className="soft-card-extra">辅助分诊记录</span>}>
-            {history.isLoading ? (
-              <List loading />
-            ) : (history.data ?? []).length === 0 ? (
-              <Empty description="暂无辅助分诊记录" />
-            ) : (
-              <div className="record-timeline-scroll">
-                <List
-                  dataSource={history.data ?? []}
-                  renderItem={(item) => (
-                    <List.Item
-                      className="record-list-item"
-                      actions={[
-                        <Button key="view" type="link" onClick={() => navigate(`/diagnosis/${item.id}`)}>
-                          查看
-                        </Button>,
-                        <Popconfirm
-                          key="delete"
-                          title="删除这条辅助分诊记录？"
-                          description="删除后该汇总建议将无法恢复。"
-                          okText="删除"
-                          cancelText="取消"
-                          okButtonProps={{ danger: true }}
-                          onConfirm={() => handleDelete(item.id)}
-                        >
-                          <Button type="link" danger loading={deletingId === item.id}>
-                            删除
-                          </Button>
-                        </Popconfirm>,
-                      ]}
-                    >
-                      <List.Item.Meta
-                        title={
-                          <Space wrap>
-                            <Tag color={item.safetyLevel ? safetyColors[item.safetyLevel] : 'default'}>
-                              {item.safetyLevel ? safetyLabels[item.safetyLevel] : item.status}
-                            </Tag>
-                            <Typography.Text>{new Date(item.createdAt).toLocaleString()}</Typography.Text>
-                            {item.generationStatus?.degraded ? <Tag color="gold">部分生成</Tag> : null}
-                          </Space>
-                        }
-                        description={
-                          <Space direction="vertical" size={4}>
-                            <Typography.Text>{item.integratedOutput?.summary || item.input.chiefComplaint}</Typography.Text>
-                            {item.input.chiefComplaint && item.integratedOutput?.summary ? (
-                              <Typography.Text type="secondary">主诉：{item.input.chiefComplaint}</Typography.Text>
-                            ) : null}
-                          </Space>
-                        }
-                      />
-                    </List.Item>
-                  )}
-                />
-              </div>
-            )}
-          </Card>
-        </Col>
-      </Row>
+      {showHistory ? (
+        <Row gutter={[18, 18]}>
+          <Col xs={24} xl={12}>
+            <DiagnosisForm
+              loading={create.isPending}
+              followUpLoading={followUp.isPending}
+              onGenerateFollowUp={(input) => followUp.mutateAsync(input)}
+              onSubmit={handleSubmit}
+            />
+          </Col>
+          <Col xs={24} xl={12}>
+            <Card
+              title="历史记录"
+              extra={
+                <Space size={8}>
+                  <span className="soft-card-extra">辅助分诊记录</span>
+                  <Button size="small" icon={<UpOutlined />} onClick={() => setShowHistory(false)}>
+                    收起
+                  </Button>
+                </Space>
+              }
+            >
+              {history.isLoading ? (
+                <List loading />
+              ) : (history.data ?? []).length === 0 ? (
+                <Empty description="暂无辅助分诊记录" />
+              ) : (
+                <div className="record-timeline-scroll">
+                  <List
+                    dataSource={history.data ?? []}
+                    renderItem={(item) => (
+                      <List.Item
+                        className="record-list-item"
+                        actions={[
+                          <Button key="view" type="link" onClick={() => navigate(`/diagnosis/${item.id}`)}>
+                            查看
+                          </Button>,
+                          <Popconfirm
+                            key="delete"
+                            title="删除这条辅助分诊记录？"
+                            description="删除后该汇总建议将无法恢复。"
+                            okText="删除"
+                            cancelText="取消"
+                            okButtonProps={{ danger: true }}
+                            onConfirm={() => handleDelete(item.id)}
+                          >
+                            <Button type="link" danger loading={deletingId === item.id}>
+                              删除
+                            </Button>
+                          </Popconfirm>,
+                        ]}
+                      >
+                        <List.Item.Meta
+                          title={
+                            <Space wrap>
+                              <Tag color={item.safetyLevel ? safetyColors[item.safetyLevel] : 'default'}>
+                                {item.safetyLevel ? safetyLabels[item.safetyLevel] : item.status}
+                              </Tag>
+                              <Typography.Text>{new Date(item.createdAt).toLocaleString()}</Typography.Text>
+                              {item.generationStatus?.degraded ? <Tag color="gold">部分生成</Tag> : null}
+                            </Space>
+                          }
+                          description={
+                            <Space direction="vertical" size={4}>
+                              <Typography.Text>{item.integratedOutput?.summary || item.input.chiefComplaint}</Typography.Text>
+                              {item.input.chiefComplaint && item.integratedOutput?.summary ? (
+                                <Typography.Text type="secondary">主诉：{item.input.chiefComplaint}</Typography.Text>
+                              ) : null}
+                            </Space>
+                          }
+                        />
+                      </List.Item>
+                    )}
+                  />
+                </div>
+              )}
+            </Card>
+          </Col>
+        </Row>
+      ) : (
+        <div className="diagnosis-collapsed-layout">
+          <Button type="primary" icon={<HistoryOutlined />} onClick={() => setShowHistory(true)}>
+            查看历史记录
+          </Button>
+          <Row gutter={[18, 18]} justify="center">
+            <Col xs={24} lg={18} xl={14}>
+              <DiagnosisForm
+                loading={create.isPending}
+                followUpLoading={followUp.isPending}
+                onGenerateFollowUp={(input) => followUp.mutateAsync(input)}
+                onSubmit={handleSubmit}
+              />
+            </Col>
+          </Row>
+        </div>
+      )}
     </>
   );
 }
