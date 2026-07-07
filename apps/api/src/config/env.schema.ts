@@ -6,6 +6,8 @@ export const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().default('redis://localhost:6379'),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  JWT_SECRET: z.string().min(8).optional(),
+  JWT_ACCESS_TTL: z.string().default('30d'),
   ENCRYPTION_KEY: z.string().min(16).optional(),
   LLM_PROVIDER: z.enum(LLM_PROVIDER_IDS).default('mock'),
   LLM_MODEL: z.string().optional(),

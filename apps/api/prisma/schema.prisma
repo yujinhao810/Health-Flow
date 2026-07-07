@@ -61,6 +61,7 @@ model User {
   id                 String               @id @default(uuid())
   email              String               @unique
   passwordHash       String?
+  tokenVersion       Int                  @default(0)
   displayName        String?
   role               String               @default("user")
   disabledAt         DateTime?

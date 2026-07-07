@@ -46,6 +46,7 @@ export class AdminUsersService {
       data: {
         role: input.role,
         disabledAt: input.disabled === undefined ? undefined : input.disabled ? new Date() : null,
+        tokenVersion: input.disabled === undefined ? undefined : { increment: 1 },
       },
     });
 
@@ -56,7 +57,7 @@ export class AdminUsersService {
     const target = await this.getTargetUser(targetUserId);
     const user = await this.prisma.user.update({
       where: { id: target.id },
-      data: { passwordHash: hashPassword(input.password) },
+      data: { passwordHash: hashPassword(input.password), tokenVersion: { increment: 1 } },
     });
 
     return { user: this.serializeUser(user) };

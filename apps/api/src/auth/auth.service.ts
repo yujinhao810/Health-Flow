@@ -9,8 +9,8 @@ import type { AuthUser } from './auth.types';
 import { ChangePasswordDto, LoginDto, RegisterDto, UpdatePreferencesDto, UpdateProfileDto } from './dto/auth.dto';
 
 const PASSWORD_PREFIX = 'scrypt';
-const TOKEN_PREFIX = 'v1';
-const TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+const JWT_ALGORITHM = 'HS256';
+const DEFAULT_JWT_ACCESS_TTL = '30d';
 const DEFAULT_ADMIN_EMAIL = 'admin@healthflow.local';
 const DEFAULT_ADMIN_PASSWORD = '12345678';
 const DEFAULT_ADMIN_DISPLAY_NAME = 'admin';
@@ -21,6 +21,20 @@ const AVATAR_MIME_TYPES = new Map([
   ['image/webp', '.webp'],
   ['image/gif', '.gif'],
 ]);
+
+type JwtHeader = {
+  alg: typeof JWT_ALGORITHM;
+  typ: 'JWT';
+};
+
+type AccessTokenPayload = {
+  sub: string;
+  email: string;
+  role: string;
+  tokenVersion: number;
+  iat: number;
+  exp: number;
+};
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -43,6 +57,7 @@ export class AuthService implements OnModuleInit {
         data: {
           displayName: input.displayName?.trim() || existing.displayName || email.split('@')[0],
           passwordHash: hashPassword(input.password),
+          tokenVersion: { increment: 1 },
         },
       });
 
@@ -90,9 +105,10 @@ export class AuthService implements OnModuleInit {
     const payload = this.verifyToken(token);
     if (!payload) return null;
 
-    const user = await this.prisma.user.findUnique({ where: { id: payload.userId } });
+    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user) return null;
     if (user.disabledAt) return null;
+    if (user.tokenVersion !== payload.tokenVersion) return null;
 
     return this.serializeUser(user);
   }
@@ -166,7 +182,7 @@ export class AuthService implements OnModuleInit {
 
     await this.prisma.user.update({
       where: { id: userId },
-      data: { passwordHash: hashPassword(input.newPassword) },
+      data: { passwordHash: hashPassword(input.newPassword), tokenVersion: { increment: 1 } },
     });
 
     return { success: true as const };
@@ -191,7 +207,7 @@ export class AuthService implements OnModuleInit {
 
   private toAuthResult(user: User) {
     return {
-      token: this.signToken(user.id),
+      token: this.signToken(user),
       user: this.serializeUser(user),
     };
   }
@@ -267,28 +283,44 @@ export class AuthService implements OnModuleInit {
     });
   }
 
-  private signToken(userId: string) {
-    const expiresAt = Date.now() + TOKEN_TTL_MS;
-    const payload = Buffer.from(JSON.stringify({ userId, expiresAt })).toString('base64url');
-    const signature = this.sign(payload);
-    return [TOKEN_PREFIX, payload, signature].join('.');
+  private signToken(user: User) {
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const expiresIn = parseDurationSeconds(this.config.get<string>('JWT_ACCESS_TTL') || DEFAULT_JWT_ACCESS_TTL);
+    const header: JwtHeader = { alg: JWT_ALGORITHM, typ: 'JWT' };
+    const payload: AccessTokenPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      tokenVersion: user.tokenVersion,
+      iat: issuedAt,
+      exp: issuedAt + expiresIn,
+    };
+    const encodedHeader = encodeJwtPart(header);
+    const encodedPayload = encodeJwtPart(payload);
+    const unsignedToken = `${encodedHeader}.${encodedPayload}`;
+    return `${unsignedToken}.${this.sign(unsignedToken)}`;
   }
 
   private verifyToken(token: string) {
-    const [prefix, payload, signature] = token.split('.');
-    if (prefix !== TOKEN_PREFIX || !payload || !signature) return null;
+    const [encodedHeader, encodedPayload, signature, extra] = token.split('.');
+    if (!encodedHeader || !encodedPayload || !signature || extra) return null;
 
-    const expected = this.sign(payload);
+    const expected = this.sign(`${encodedHeader}.${encodedPayload}`);
     if (!safeEqual(signature, expected)) return null;
 
-    try {
-      const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { userId?: unknown; expiresAt?: unknown };
-      if (typeof parsed.userId !== 'string' || typeof parsed.expiresAt !== 'number') return null;
-      if (Date.now() > parsed.expiresAt) return null;
-      return { userId: parsed.userId };
-    } catch {
-      return null;
-    }
+    const header = decodeJwtPart<Partial<JwtHeader>>(encodedHeader);
+    if (!header || header.alg !== JWT_ALGORITHM || header.typ !== 'JWT') return null;
+
+    const payload = decodeJwtPart<Partial<AccessTokenPayload>>(encodedPayload);
+    if (!payload) return null;
+    if (typeof payload.sub !== 'string') return null;
+    if (typeof payload.email !== 'string') return null;
+    if (typeof payload.role !== 'string') return null;
+    if (typeof payload.tokenVersion !== 'number') return null;
+    if (typeof payload.iat !== 'number' || typeof payload.exp !== 'number') return null;
+    if (Math.floor(Date.now() / 1000) >= payload.exp) return null;
+
+    return payload as AccessTokenPayload;
   }
 
   private sign(payload: string) {
@@ -310,6 +342,38 @@ export class AuthService implements OnModuleInit {
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
+}
+
+function encodeJwtPart(value: unknown) {
+  return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
+
+function decodeJwtPart<T>(value: string): T | null {
+  try {
+    return JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as T;
+  } catch {
+    return null;
+  }
+}
+
+function parseDurationSeconds(value: string) {
+  const match = value.trim().match(/^(\d+)([smhd])?$/i);
+  if (!match) throw new BadRequestException('JWT_ACCESS_TTL must use a value like 15m, 12h, 30d, or seconds');
+
+  const amount = Number(match[1]);
+  const unit = match[2]?.toLowerCase() ?? 's';
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    throw new BadRequestException('JWT_ACCESS_TTL must be a positive duration');
+  }
+
+  const multipliers: Record<string, number> = {
+    s: 1,
+    m: 60,
+    h: 60 * 60,
+    d: 24 * 60 * 60,
+  };
+
+  return amount * multipliers[unit];
 }
 
 export function hashPassword(password: string) {

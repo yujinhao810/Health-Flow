@@ -1,8 +1,7 @@
-import { BookOutlined, DeleteOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PlusOutlined } from '@ant-design/icons';
-import type { ChatAttachment } from '@health/shared';
+import { DeleteOutlined, MessageOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button, Empty, Popconfirm, Spin, Typography, message } from 'antd';
 import { useEffect, useState } from 'react';
-import { deleteUpload, listUploads, type Conversation } from '../../api/chat';
+import type { Conversation } from '../../api/chat';
 import { useAuth } from '../../hooks/useAuth';
 import { useChatStream } from '../../hooks/useChatStream';
 import { Composer } from './Composer';
@@ -11,7 +10,6 @@ import { MessageList } from './MessageList';
 export function ChatPanel() {
   const { user } = useAuth();
   const [draft, setDraft] = useState('');
-  const [knowledgeReloadKey, setKnowledgeReloadKey] = useState(0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const {
     conversationId,
@@ -75,7 +73,10 @@ export function ChatPanel() {
           </Button>
 
           <div className="chat-sidebar-header">
-            <Typography.Text strong>历史会话</Typography.Text>
+            <span className="chat-sidebar-title">
+              <MessageOutlined />
+              <Typography.Text strong>历史会话</Typography.Text>
+            </span>
             <Button
               className="chat-sidebar-collapse-button"
               type="text"
@@ -108,7 +109,6 @@ export function ChatPanel() {
             )}
           </div>
 
-          <KnowledgeBasePanel reloadKey={knowledgeReloadKey} streaming={streaming} />
         </aside>
       )}
 
@@ -125,7 +125,6 @@ export function ChatPanel() {
           onSend={send}
           onStop={stop}
           streaming={streaming}
-          onKnowledgeUploaded={() => setKnowledgeReloadKey((value) => value + 1)}
         />
       </section>
     </div>
@@ -164,6 +163,9 @@ function ThreadCard({
         onSelect();
       }}
     >
+      <span className="chat-thread-icon" aria-hidden="true">
+        <MessageOutlined />
+      </span>
       <div className="chat-thread-copy">
         <Typography.Text strong>{conversation.title || '心理对话'}</Typography.Text>
         <Typography.Text type="secondary">{preview}</Typography.Text>
@@ -189,81 +191,5 @@ function ThreadCard({
         </Popconfirm>
       </span>
     </div>
-  );
-}
-
-function KnowledgeBasePanel({ reloadKey, streaming }: { reloadKey: number; streaming: boolean }) {
-  const [uploads, setUploads] = useState<ChatAttachment[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [deletingUploadId, setDeletingUploadId] = useState<string>();
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    listUploads('knowledge_source')
-      .then((items) => {
-        if (active) setUploads(items);
-      })
-      .catch((loadError) => {
-        if (active) message.error(loadError instanceof Error ? loadError.message : '加载知识库文档失败');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [reloadKey]);
-
-  async function handleDeleteKnowledgeUpload(id: string) {
-    if (streaming || deletingUploadId) return;
-
-    setDeletingUploadId(id);
-    try {
-      await deleteUpload(id);
-      setUploads((current) => current.filter((item) => item.id !== id));
-      message.success('知识库文档已删除');
-    } catch (deleteError) {
-      message.error(deleteError instanceof Error ? deleteError.message : '删除知识库文档失败');
-    } finally {
-      setDeletingUploadId(undefined);
-    }
-  }
-
-  return (
-    <details className="chat-knowledge-panel">
-      <summary>
-        <span>
-          <BookOutlined />
-          知识库文档
-        </span>
-        <em>{loading ? '加载中' : `${uploads.length} 个`}</em>
-      </summary>
-      <div className="chat-knowledge-list">
-        {loading ? (
-          <Spin size="small" />
-        ) : uploads.length ? (
-          uploads.map((attachment) => (
-            <span key={attachment.id} className="chat-attachment-chip knowledge-chip" title={attachment.originalName}>
-              <span className="knowledge-chip-name">{attachment.originalName}</span>
-              <Button
-                aria-label={`删除 ${attachment.originalName}`}
-                className="knowledge-chip-delete"
-                type="text"
-                size="small"
-                icon={<DeleteOutlined />}
-                loading={deletingUploadId === attachment.id}
-                disabled={streaming || Boolean(deletingUploadId)}
-                onClick={() => void handleDeleteKnowledgeUpload(attachment.id)}
-              />
-            </span>
-          ))
-        ) : (
-          <Typography.Text type="secondary">上传文档后会显示在这里。</Typography.Text>
-        )}
-      </div>
-    </details>
   );
 }

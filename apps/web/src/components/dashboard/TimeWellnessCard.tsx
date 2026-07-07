@@ -1,5 +1,5 @@
 import { CalendarOutlined, ClockCircleOutlined, CompassOutlined } from '@ant-design/icons';
-import { Card, Tag, Typography } from 'antd';
+import { Tag, Typography } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 
 type MeridianPeriod = {
@@ -85,7 +85,7 @@ export function TimeWellnessCard() {
   }, []);
 
   return (
-    <Card className="time-wellness-card">
+    <section className="time-wellness-card" aria-label="time wellness overview">
       <div className="time-wellness-grid">
         <section className="time-wellness-main">
           <div className="time-wellness-kicker">
@@ -138,7 +138,7 @@ export function TimeWellnessCard() {
           <Typography.Text className="time-wellness-next">下一节气：{next.name} · {next.date}</Typography.Text>
         </section>
       </div>
-    </Card>
+    </section>
   );
 }
 

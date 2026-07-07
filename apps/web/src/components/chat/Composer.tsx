@@ -1,10 +1,17 @@
-import { ArrowUpOutlined, PaperClipOutlined, SearchOutlined, StopOutlined } from '@ant-design/icons';
+import {
+  ArrowUpOutlined,
+  CloseOutlined,
+  PaperClipOutlined,
+  SearchOutlined,
+  StopOutlined,
+} from '@ant-design/icons';
 import type { ChatAttachment } from '@health/shared';
 import { Button, Input, Tooltip, Upload, message } from 'antd';
 import type { KeyboardEvent } from 'react';
 import { useState } from 'react';
-import { uploadFile } from '../../api/chat';
+import { deleteUpload, uploadFile } from '../../api/chat';
 import type { SendChatInput } from '../../hooks/useChatStream';
+import { formatFileSize, getAttachmentCardMeta } from './attachmentMeta';
 
 export function Composer({
   value,
@@ -12,25 +19,26 @@ export function Composer({
   onSend,
   onStop,
   streaming,
-  onKnowledgeUploaded,
 }: {
   value: string;
   onChange: (value: string) => void;
   onSend: (input: SendChatInput) => void;
   onStop: () => void;
   streaming: boolean;
-  onKnowledgeUploaded?: () => void;
 }) {
   const [ragEnabled, setRagEnabled] = useState(true);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const [knowledgeUploads, setKnowledgeUploads] = useState<ChatAttachment[]>([]);
+  const [deletingKnowledgeId, setDeletingKnowledgeId] = useState<string>();
   const [uploading, setUploading] = useState(false);
   const trimmedValue = value.trim();
 
   const send = () => {
     if (!trimmedValue || streaming || uploading) return;
-    onSend({ content: trimmedValue, attachments, ragEnabled });
+    onSend({ content: trimmedValue, attachments: [...knowledgeUploads, ...attachments], ragEnabled });
     onChange('');
     setAttachments([]);
+    setKnowledgeUploads([]);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -38,6 +46,21 @@ export function Composer({
     event.preventDefault();
     send();
   };
+
+  async function handleDeleteKnowledgeUpload(id: string) {
+    if (streaming || deletingKnowledgeId) return;
+
+    setDeletingKnowledgeId(id);
+    try {
+      await deleteUpload(id);
+      setKnowledgeUploads((current) => current.filter((item) => item.id !== id));
+      message.success('知识库文档已删除');
+    } catch (deleteError) {
+      message.error(deleteError instanceof Error ? deleteError.message : '删除知识库文档失败');
+    } finally {
+      setDeletingKnowledgeId(undefined);
+    }
+  }
 
   return (
     <div className="chat-composer">
@@ -55,6 +78,13 @@ export function Composer({
       ) : null}
 
       <div className="chat-composer-shell">
+        <KnowledgeDocumentStrip
+          uploads={knowledgeUploads}
+          streaming={streaming}
+          deletingId={deletingKnowledgeId}
+          onDelete={handleDeleteKnowledgeUpload}
+        />
+
         <Input.TextArea
           className="chat-composer-input"
           value={value}
@@ -68,14 +98,21 @@ export function Composer({
         <div className="chat-composer-toolbar">
           <div className="chat-composer-modes">
             <button
-              className={`chat-mode-pill ${ragEnabled ? 'active' : ''}`}
+              className={`chat-mode-pill ${ragEnabled ? 'active' : 'inactive'}`}
               type="button"
               onClick={() => setRagEnabled(!ragEnabled)}
               disabled={streaming}
               aria-pressed={ragEnabled}
+              aria-label={`知识库检索${ragEnabled ? '已开启' : '已关闭'}`}
+              title={`知识库检索${ragEnabled ? '已开启' : '已关闭'}`}
             >
-              <SearchOutlined />
-              <span>知识库检索</span>
+              <span className="chat-mode-icon" aria-hidden="true">
+                <SearchOutlined />
+              </span>
+              <span className="chat-mode-label">知识库检索</span>
+              <span className="chat-mode-switch" aria-hidden="true">
+                <span className="chat-mode-switch-thumb" />
+              </span>
             </button>
           </div>
 
@@ -91,7 +128,7 @@ export function Composer({
                   try {
                     const uploaded = await uploadFile(file, purpose);
                     if (uploaded.purpose === 'knowledge_source') {
-                      onKnowledgeUploaded?.();
+                      setKnowledgeUploads((current) => [uploaded, ...current.filter((item) => item.id !== uploaded.id)]);
                       message.success('资料已入库，可以直接提问');
                     } else {
                       setAttachments((current) => [...current, uploaded].slice(0, 6));
@@ -119,6 +156,54 @@ export function Composer({
         </div>
       </div>
       <div className="chat-safety-note">我可以陪你梳理情绪，但不能替代医生或心理咨询师；若有紧急危险，请立刻联系当地紧急服务或可信任的人。</div>
+    </div>
+  );
+}
+
+function KnowledgeDocumentStrip({
+  uploads,
+  streaming,
+  deletingId,
+  onDelete,
+}: {
+  uploads: ChatAttachment[];
+  streaming: boolean;
+  deletingId?: string;
+  onDelete: (id: string) => void | Promise<void>;
+}) {
+  if (!uploads.length) return null;
+
+  return (
+    <div className="knowledge-document-strip" aria-label="知识库文档">
+      {uploads.map((attachment) => {
+        const meta = getAttachmentCardMeta(attachment);
+
+        return (
+          <article key={attachment.id} className="knowledge-document-card" title={attachment.originalName}>
+            <span className={`knowledge-document-icon ${meta.tone}`} aria-hidden="true">
+              {meta.icon}
+            </span>
+            <span className="knowledge-document-copy">
+              <strong>{attachment.originalName}</strong>
+              <span>
+                {meta.label} {formatFileSize(attachment.sizeBytes)}
+              </span>
+            </span>
+            <Tooltip title="删除知识库文档">
+              <Button
+                className="knowledge-document-delete"
+                type="text"
+                size="small"
+                icon={<CloseOutlined />}
+                loading={deletingId === attachment.id}
+                disabled={streaming || Boolean(deletingId)}
+                aria-label={`删除 ${attachment.originalName}`}
+                onClick={() => void onDelete(attachment.id)}
+              />
+            </Tooltip>
+          </article>
+        );
+      })}
     </div>
   );
 }
