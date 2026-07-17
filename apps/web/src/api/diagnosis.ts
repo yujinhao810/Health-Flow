@@ -1,4 +1,4 @@
-import type { DiagnosisFollowUpRequest, DiagnosisFollowUpResult, DiagnosisInput, DiagnosisSession } from '@health/shared';
+import type { DiagnosisFollowUpRequest, DiagnosisFollowUpResult, DiagnosisInput, DiagnosisSession, DiagnosisSupplementInput } from '@health/shared';
 import { api } from './client';
 
 export type { DiagnosisFollowUpRequest, DiagnosisFollowUpResult, DiagnosisInput, DiagnosisSession };
@@ -14,6 +14,14 @@ export function createDiagnosis(input: DiagnosisInput) {
 
 export function generateDiagnosisFollowUp(input: DiagnosisFollowUpRequest) {
   return api<DiagnosisFollowUpResult>('/integrative-diagnosis/follow-up', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function supplementDiagnosis(id: string, input: DiagnosisSupplementInput) {
+  return api<DiagnosisSession>(`/integrative-diagnosis/${id}/supplement`, { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function retryDiagnosis(id: string) {
+  return api<DiagnosisSession>(`/integrative-diagnosis/${id}/retry`, { method: 'POST' });
 }
 
 export function listDiagnoses() {

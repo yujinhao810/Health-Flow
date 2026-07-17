@@ -43,6 +43,10 @@ export type LlmMessage = {
 export type LlmConfig = {
   provider: LlmProviderName;
   model: string;
+  diagnosisWesternModel?: string;
+  diagnosisTcmModel?: string;
+  diagnosisReviewerModel?: string;
+  diagnosisIntegratorModel?: string;
   apiKey?: string;
   baseUrl?: string;
   embeddingApiKey?: string;
@@ -83,6 +87,7 @@ export type LlmStructuredRequest = {
   messages: LlmMessage[];
   schemaName: string;
   schema: unknown;
+  maxOutputTokens?: number;
   signal?: AbortSignal;
 };
 

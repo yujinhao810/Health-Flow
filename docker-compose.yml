@@ -17,6 +17,31 @@ services:
     volumes:
       - redis_data:/data
 
+  document-parser:
+    build:
+      context: ./services/document-parser
+    ports:
+      - "8090:8090"
+    environment:
+      PADDLE_PDX_MODEL_SOURCE: BOS
+    volumes:
+      - document_parser_models:/root/.paddlex
+      - document_parser_cache:/root/.cache
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
 volumes:
   postgres_data:
   redis_data:
+  document_parser_models:
+  document_parser_cache:

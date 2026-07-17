@@ -237,6 +237,10 @@ export const llmProviderSchema = z.enum(LLM_PROVIDER_IDS);
 export const llmConfigSchema = z.object({
   provider: llmProviderSchema,
   model: z.string().min(1),
+  diagnosisWesternModel: z.string().min(1).optional(),
+  diagnosisTcmModel: z.string().min(1).optional(),
+  diagnosisReviewerModel: z.string().min(1).optional(),
+  diagnosisIntegratorModel: z.string().min(1).optional(),
   apiKey: z.string().min(1).optional(),
   baseUrl: z.string().url().optional().or(z.literal('')),
   ragEnabled: z.boolean().optional(),
@@ -249,6 +253,10 @@ export type LlmConfigInput = z.infer<typeof llmConfigSchema>;
 export type PublicLlmConfig = {
   provider: LlmProviderName;
   model: string;
+  diagnosisWesternModel?: string;
+  diagnosisTcmModel?: string;
+  diagnosisReviewerModel?: string;
+  diagnosisIntegratorModel?: string;
   maskedApiKey?: string;
   baseUrl?: string;
   ragEnabled?: boolean;

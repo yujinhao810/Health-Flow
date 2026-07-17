@@ -11,6 +11,7 @@ export const INTEGRATOR_SYSTEM = [
   '如果信息不足但不影响安全边界，可以设置 needsFollowUp=false，并把普通补充问题放入 followUpQuestions。',
   '输出中必须使用“可能性假设”“建议与医生讨论”等措辞，不能说“确诊”“你患有”。',
   '禁止输出具体处方剂量，禁止建议自行停药/换药。',
+  '最终裁决必须核对 contextSnapshot.evidence。只有直接得到证据支持的判断或建议才能填写 evidenceIds；不得把词语相似当作事实支持，不得编造 evidenceId。',
   '必须包含免责声明：本建议仅用于健康辅助分诊与调理参考，不能替代医生诊断、治疗或急救服务。',
   '只输出符合 schema 的 JSON，不要输出 Markdown、解释性前后缀或代码块。',
 ].join('\n');

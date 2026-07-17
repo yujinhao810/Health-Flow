@@ -78,10 +78,18 @@ export class ChatService {
   }
 
   async removeThread(user: AuthUser, id: string) {
+    const linkedFiles = await this.prisma.uploadedFile.findMany({
+      where: {
+        userId: user.id,
+        messageLinks: { some: { message: { conversationId: id } } },
+      },
+      select: { id: true },
+    });
     const result = await this.prisma.conversation.deleteMany({ where: { id, userId: user.id } });
     if (result.count === 0) {
       throw new NotFoundException('Conversation not found');
     }
+    await this.uploads.removeUnlinkedFiles(user, linkedFiles.map((file) => file.id));
 
     return { id, deleted: true };
   }

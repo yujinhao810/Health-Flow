@@ -19,9 +19,9 @@ export const CHART_COLORS = {
     areaEnd: 'rgba(56, 189, 248, 0.02)',
     gradient: ['#38bdf8', '#6d5dfc'],
   },
-  grid: 'rgba(129, 140, 248, 0.18)',
-  text: '#64748b',
-  referenceLine: 'rgba(109, 93, 252, 0.38)',
+  grid: 'var(--healing-border)',
+  text: 'var(--healing-muted)',
+  referenceLine: 'rgba(139, 131, 255, 0.42)',
 } as const;
 
 export const CHART_META: Record<

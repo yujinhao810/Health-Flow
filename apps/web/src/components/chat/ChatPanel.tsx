@@ -1,6 +1,7 @@
 import { DeleteOutlined, MessageOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button, Empty, Popconfirm, Spin, Typography, message } from 'antd';
 import { useEffect, useState } from 'react';
+import { getAvatarImageSrc } from '../../api/auth';
 import type { Conversation } from '../../api/chat';
 import { useAuth } from '../../hooks/useAuth';
 import { useChatStream } from '../../hooks/useChatStream';
@@ -9,6 +10,7 @@ import { MessageList } from './MessageList';
 
 export function ChatPanel() {
   const { user } = useAuth();
+  const userAvatarSrc = getAvatarImageSrc(user?.avatarUrl);
   const [draft, setDraft] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const {
@@ -117,6 +119,7 @@ export function ChatPanel() {
           messages={messages}
           loading={loadingMessages}
           userLabel={user?.displayName || user?.email.split('@')[0]}
+          userAvatarSrc={userAvatarSrc}
           onPromptSelect={setDraft}
         />
         <Composer

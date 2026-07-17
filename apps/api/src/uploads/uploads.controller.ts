@@ -1,47 +1,69 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { Response } from 'express';
-import { createReadStream } from 'fs';
-import { AuthGuard } from '../auth/auth.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
-import type { AuthUser } from '../auth/auth.types';
-import { UploadsService } from './uploads.service';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Query,
+  Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { Response } from "express";
+import { createReadStream } from "fs";
+import { AuthGuard } from "../auth/auth.guard";
+import { CurrentUser } from "../auth/current-user.decorator";
+import type { AuthUser } from "../auth/auth.types";
+import { UploadsService } from "./uploads.service";
 
-@Controller('uploads')
+@Controller("uploads")
 @UseGuards(AuthGuard)
 export class UploadsController {
   constructor(private readonly uploads: UploadsService) {}
 
   @Post()
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor("file"))
   create(
     @CurrentUser() user: AuthUser,
     @UploadedFile() file: Express.Multer.File | undefined,
-    @Body('purpose') purpose: 'chat_attachment' | 'knowledge_source',
+    @Body("purpose") purpose: "chat_attachment" | "knowledge_source",
   ) {
     return this.uploads.create(user, file, purpose);
   }
 
   @Get()
-  list(@CurrentUser() user: AuthUser, @Query('purpose') purpose?: 'chat_attachment' | 'knowledge_source') {
+  list(
+    @CurrentUser() user: AuthUser,
+    @Query("purpose") purpose?: "chat_attachment" | "knowledge_source",
+  ) {
     return this.uploads.list(user, purpose);
   }
 
-  @Get(':id')
-  get(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+  @Get(":id")
+  get(@CurrentUser() user: AuthUser, @Param("id") id: string) {
     return this.uploads.get(user, id);
   }
 
-  @Get(':id/content')
-  async content(@CurrentUser() user: AuthUser, @Param('id') id: string, @Res() res: Response) {
+  @Get(":id/content")
+  async content(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+    @Res() res: Response,
+  ) {
     const file = await this.uploads.getOwnedFile(user, id);
-    res.setHeader('Content-Type', file.mimeType);
-    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.originalName)}`);
+    res.setHeader("Content-Type", file.mimeType);
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename*=UTF-8''${encodeURIComponent(file.originalName)}`,
+    );
     createReadStream(file.storagePath).pipe(res);
   }
 
-  @Delete(':id')
-  remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+  @Delete(":id")
+  remove(@CurrentUser() user: AuthUser, @Param("id") id: string) {
     return this.uploads.remove(user, id);
   }
 }

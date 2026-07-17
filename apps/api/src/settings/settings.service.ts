@@ -35,6 +35,10 @@ export class SettingsService {
       return {
         provider,
         model: saved.model,
+        diagnosisWesternModel: saved.diagnosisWesternModel ?? undefined,
+        diagnosisTcmModel: saved.diagnosisTcmModel ?? undefined,
+        diagnosisReviewerModel: saved.diagnosisReviewerModel ?? undefined,
+        diagnosisIntegratorModel: saved.diagnosisIntegratorModel ?? undefined,
         apiKey: saved.encryptedApiKey ? this.decryptSecret(saved.encryptedApiKey) : this.getProviderApiKey(provider),
         baseUrl: this.resolveBaseUrl(provider, saved.baseUrl ?? undefined),
         embeddingApiKey: this.config.get<string>('EMBEDDING_API_KEY'),
@@ -73,6 +77,10 @@ export class SettingsService {
       return {
         provider: saved.provider,
         model: saved.model,
+        diagnosisWesternModel: saved.diagnosisWesternModel ?? undefined,
+        diagnosisTcmModel: saved.diagnosisTcmModel ?? undefined,
+        diagnosisReviewerModel: saved.diagnosisReviewerModel ?? undefined,
+        diagnosisIntegratorModel: saved.diagnosisIntegratorModel ?? undefined,
         maskedApiKey: saved.maskedApiKey ?? (envApiKey ? maskSecret(envApiKey) : undefined),
         baseUrl: this.resolveBaseUrl(provider, saved.baseUrl ?? undefined),
         ragEnabled: saved.ragEnabled,
@@ -86,6 +94,10 @@ export class SettingsService {
     return {
       provider: config.provider,
       model: config.model,
+      diagnosisWesternModel: config.diagnosisWesternModel,
+      diagnosisTcmModel: config.diagnosisTcmModel,
+      diagnosisReviewerModel: config.diagnosisReviewerModel,
+      diagnosisIntegratorModel: config.diagnosisIntegratorModel,
       maskedApiKey: config.apiKey ? maskSecret(config.apiKey) : undefined,
       baseUrl: config.baseUrl,
       ragEnabled: config.ragEnabled ?? true,
@@ -117,9 +129,20 @@ export class SettingsService {
     const maskedApiKey = apiKey ? maskSecret(apiKey) : existingMaskedKey;
     const metadata = LLM_PROVIDER_METADATA[config.provider];
 
-    if (config.provider === 'anthropic' && !LLM_PROVIDER_METADATA.anthropic.models.some((model) => model === config.model)) {
+    const configuredModels = [
+      config.model,
+      config.diagnosisWesternModel,
+      config.diagnosisTcmModel,
+      config.diagnosisReviewerModel,
+      config.diagnosisIntegratorModel,
+    ].filter((model): model is string => Boolean(model));
+    const invalidAnthropicModel =
+      config.provider === 'anthropic'
+        ? configuredModels.find((model) => !LLM_PROVIDER_METADATA.anthropic.models.some((allowed) => allowed === model))
+        : undefined;
+    if (invalidAnthropicModel) {
       throw new BadRequestException(
-        `模型 ${config.model} 不属于 Anthropic Claude。请选择正确的提供商后再保存，或改用 claude-opus-4-8 等 Claude 模型。`,
+        `模型 ${invalidAnthropicModel} 不属于 Anthropic Claude。请选择正确的提供商后再保存，或改用 Claude 模型。`,
       );
     }
 
@@ -133,6 +156,10 @@ export class SettingsService {
         userId: user.id,
         provider: config.provider,
         model: config.model,
+        diagnosisWesternModel: normalizeOptionalModel(config.diagnosisWesternModel),
+        diagnosisTcmModel: normalizeOptionalModel(config.diagnosisTcmModel),
+        diagnosisReviewerModel: normalizeOptionalModel(config.diagnosisReviewerModel),
+        diagnosisIntegratorModel: normalizeOptionalModel(config.diagnosisIntegratorModel),
         encryptedApiKey,
         maskedApiKey,
         baseUrl: normalizeBaseUrl(config.baseUrl),
@@ -207,6 +234,10 @@ function normalizeApiKey(apiKey?: string) {
   const value = apiKey?.replace(/^Bearer\s+/i, '').replace(/\s+/g, '');
   if (!value || value.includes('****')) return undefined;
   return value;
+}
+
+function normalizeOptionalModel(value: string | undefined) {
+  return value?.trim() || null;
 }
 
 function normalizeBaseUrl(baseUrl?: string) {

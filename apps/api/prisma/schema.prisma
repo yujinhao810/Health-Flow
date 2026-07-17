@@ -29,6 +29,7 @@ enum SnapshotPeriod {
 enum DiagnosisStatus {
   pending
   completed
+  degraded
   safety_blocked
   failed
 }
@@ -93,6 +94,10 @@ model UserLlmConfig {
   userId             String
   provider           String
   model              String
+  diagnosisWesternModel    String?
+  diagnosisTcmModel        String?
+  diagnosisReviewerModel   String?
+  diagnosisIntegratorModel String?
   encryptedApiKey    String?
   maskedApiKey       String?
   baseUrl            String?

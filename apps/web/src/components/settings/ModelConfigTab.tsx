@@ -1,41 +1,63 @@
-import { Button, Collapse, Form, Input, InputNumber, Select, Space, Switch, Typography, message } from 'antd';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { LLM_PROVIDER_METADATA, type LlmProviderName } from '@health/shared';
-import { useEffect } from 'react';
-import type { LlmConfigInput } from '../../api/settings';
-import { getLlmConfig, saveLlmConfig, validateLlmConfig } from '../../api/settings';
-import { formatErrorMessage } from './settings-utils';
+import {
+  Button,
+  Collapse,
+  Form,
+  Input,
+  InputNumber,
+  Select,
+  Space,
+  Switch,
+  Typography,
+  message,
+} from "antd";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { LLM_PROVIDER_METADATA, type LlmProviderName } from "@health/shared";
+import { useEffect } from "react";
+import type { LlmConfigInput } from "../../api/settings";
+import {
+  getLlmConfig,
+  saveLlmConfig,
+  validateLlmConfig,
+} from "../../api/settings";
+import { formatErrorMessage } from "./settings-utils";
 
 const CATEGORY_LABELS = {
-  local: '本地 / 开发',
-  global: '国际主流',
-  china: '国内主流',
-  aggregator: '聚合 / 代理',
+  local: "本地 / 开发",
+  global: "国际主流",
+  china: "国内主流",
+  aggregator: "聚合 / 代理",
 } as const;
 
-const PROVIDER_OPTIONS = Object.entries(CATEGORY_LABELS).map(([category, label]) => ({
-  label,
-  options: Object.values(LLM_PROVIDER_METADATA)
-    .filter((provider) => provider.category === category)
-    .map((provider) => ({ value: provider.id, label: provider.label })),
-}));
+const PROVIDER_OPTIONS = Object.entries(CATEGORY_LABELS).map(
+  ([category, label]) => ({
+    label,
+    options: Object.values(LLM_PROVIDER_METADATA)
+      .filter((provider) => provider.category === category)
+      .map((provider) => ({ value: provider.id, label: provider.label })),
+  }),
+);
 
 export function ModelConfigTab() {
   const [form] = Form.useForm<LlmConfigInput>();
   const queryClient = useQueryClient();
-  const config = useQuery({ queryKey: ['llm-config'], queryFn: getLlmConfig });
-  const provider = Form.useWatch('provider', form) ?? 'mock';
+  const config = useQuery({ queryKey: ["llm-config"], queryFn: getLlmConfig });
+  const provider = Form.useWatch("provider", form) ?? "mock";
+  const baseModel = Form.useWatch("model", form);
   const providerMeta = LLM_PROVIDER_METADATA[provider as LlmProviderName];
-  const defaultBaseUrl = 'defaultBaseUrl' in providerMeta ? providerMeta.defaultBaseUrl : undefined;
+  const defaultBaseUrl =
+    "defaultBaseUrl" in providerMeta ? providerMeta.defaultBaseUrl : undefined;
 
   useEffect(() => {
     if (!config.data) return;
     form.setFieldsValue({
       provider: config.data.provider,
       model: config.data.model,
+      diagnosisWesternModel: config.data.diagnosisWesternModel,
+      diagnosisTcmModel: config.data.diagnosisTcmModel,
+      diagnosisReviewerModel: config.data.diagnosisReviewerModel,
+      diagnosisIntegratorModel: config.data.diagnosisIntegratorModel,
       baseUrl: config.data.baseUrl,
       apiKey: undefined,
-      ragEnabled: config.data.ragEnabled ?? true,
       ragTopK: config.data.ragTopK ?? 5,
       visionEnabled: config.data.visionEnabled ?? false,
     });
@@ -44,9 +66,9 @@ export function ModelConfigTab() {
   const save = useMutation({
     mutationFn: saveLlmConfig,
     onSuccess: () => {
-      message.success('模型配置已保存');
-      form.setFieldValue('apiKey', undefined);
-      queryClient.invalidateQueries({ queryKey: ['llm-config'] });
+      message.success("模型配置已保存");
+      form.setFieldValue("apiKey", undefined);
+      queryClient.invalidateQueries({ queryKey: ["llm-config"] });
     },
     onError: (error) => message.error(`保存失败：${formatErrorMessage(error)}`),
   });
@@ -54,25 +76,34 @@ export function ModelConfigTab() {
   const validate = useMutation({
     mutationFn: validateLlmConfig,
     onSuccess: (result) =>
-      message[result.valid ? 'success' : 'error'](
-        result.message ?? (result.valid ? '连接验证成功，请点击“保存配置”后用于对话' : '连接验证失败'),
+      message[result.valid ? "success" : "error"](
+        result.message ??
+          (result.valid
+            ? "连接验证成功，请点击“保存配置”后用于对话"
+            : "连接验证失败"),
       ),
-    onError: (error) => message.error(`连接验证请求失败：${formatErrorMessage(error)}`),
+    onError: (error) =>
+      message.error(`连接验证请求失败：${formatErrorMessage(error)}`),
   });
 
   async function handleValidate() {
     try {
       const values = await form.validateFields();
-      validate.mutate({ ...values, apiKey: normalizeApiKeyInput(values.apiKey) });
+      validate.mutate(
+        normalizeConfigInput({
+          ...values,
+          apiKey: normalizeApiKeyInput(values.apiKey),
+        }),
+      );
     } catch {
-      message.warning('请先填写提供商和模型');
+      message.warning("请先填写提供商和模型");
     }
   }
 
   function handleProviderChange() {
-    form.setFieldValue('model', '');
-    form.setFieldValue('baseUrl', undefined);
-    form.setFieldValue('apiKey', undefined);
+    form.setFieldValue("model", "");
+    form.setFieldValue("baseUrl", undefined);
+    form.setFieldValue("apiKey", undefined);
   }
 
   return (
@@ -81,8 +112,20 @@ export function ModelConfigTab() {
       <Form
         form={form}
         layout="vertical"
-        initialValues={{ provider: 'mock', model: 'mock-health-assistant', ragEnabled: true, ragTopK: 5, visionEnabled: false }}
-        onFinish={(values) => save.mutate({ ...values, apiKey: normalizeApiKeyInput(values.apiKey) })}
+        initialValues={{
+          provider: "mock",
+          model: "mock-health-assistant",
+          ragTopK: 5,
+          visionEnabled: false,
+        }}
+        onFinish={(values) =>
+          save.mutate(
+            normalizeConfigInput({
+              ...values,
+              apiKey: normalizeApiKeyInput(values.apiKey),
+            }),
+          )
+        }
       >
         <Form.Item name="provider" label="提供商" rules={[{ required: true }]}>
           <Select options={PROVIDER_OPTIONS} onChange={handleProviderChange} />
@@ -98,14 +141,22 @@ export function ModelConfigTab() {
         <Form.Item
           name="apiKey"
           label="API Key"
-          extra={providerMeta.requiresApiKey ? 'API Key 加密保存在后端，不会在前端展示。留空则使用系统默认配置。' : '该提供商无需 API Key。'}
+          extra={
+            providerMeta.requiresApiKey
+              ? "API Key 加密保存在后端，不会在前端展示。留空则使用系统默认配置。"
+              : "该提供商无需 API Key。"
+          }
         >
           <Input.Password
             autoComplete="off"
             data-lpignore="true"
             data-1p-ignore="true"
             disabled={!providerMeta.requiresApiKey}
-            placeholder={config.data?.maskedApiKey ? `已保存：${config.data.maskedApiKey}` : '仅后端保存，不在前端展示明文'}
+            placeholder={
+              config.data?.maskedApiKey
+                ? `已保存：${config.data.maskedApiKey}`
+                : "仅后端保存，不在前端展示明文"
+            }
           />
         </Form.Item>
         <Form.Item>
@@ -123,8 +174,10 @@ export function ModelConfigTab() {
           className="settings-advanced-collapse"
           items={[
             {
-              key: 'advanced',
-              label: <Typography.Text type="secondary">高级选项</Typography.Text>,
+              key: "advanced",
+              label: (
+                <Typography.Text type="secondary">高级选项</Typography.Text>
+              ),
               children: (
                 <>
                   <Form.Item
@@ -132,7 +185,43 @@ export function ModelConfigTab() {
                     label="Base URL（可选）"
                     extra="自定义模型服务的 API 地址。留空则使用默认地址，适合大多数情况。"
                   >
-                    <Input placeholder={defaultBaseUrl ? `默认：${defaultBaseUrl}` : '留空使用默认地址'} />
+                    <Input
+                      placeholder={
+                        defaultBaseUrl
+                          ? `默认：${defaultBaseUrl}`
+                          : "留空使用默认地址"
+                      }
+                    />
+                  </Form.Item>
+                  <Typography.Text strong>
+                    辅助分诊角色模型（可选）
+                  </Typography.Text>
+                  <Typography.Paragraph type="secondary">
+                    留空时沿用主模型；指定不同模型可降低多 Agent
+                    之间的相关错误，模型必须属于同一提供商。
+                  </Typography.Paragraph>
+                  <Form.Item name="diagnosisWesternModel" label="西医初评模型">
+                    <Input
+                      placeholder={`默认：${baseModel || providerMeta.defaultModel}`}
+                    />
+                  </Form.Item>
+                  <Form.Item name="diagnosisTcmModel" label="中医初评模型">
+                    <Input
+                      placeholder={`默认：${baseModel || providerMeta.defaultModel}`}
+                    />
+                  </Form.Item>
+                  <Form.Item name="diagnosisReviewerModel" label="交叉审查模型">
+                    <Input
+                      placeholder={`默认：${baseModel || providerMeta.defaultModel}`}
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    name="diagnosisIntegratorModel"
+                    label="最终仲裁模型"
+                  >
+                    <Input
+                      placeholder={`默认：${baseModel || providerMeta.defaultModel}`}
+                    />
                   </Form.Item>
                   <Form.Item
                     name="visionEnabled"
@@ -143,21 +232,11 @@ export function ModelConfigTab() {
                     <Switch />
                   </Form.Item>
                   <Form.Item
-                    name="ragEnabled"
-                    label="健康安全知识库"
-                    valuePropName="checked"
-                    extra="关闭后，对话不会检索健康安全知识库；危机安全策略仍然始终生效。"
+                    name="ragTopK"
+                    label="每轮最多检索片段数"
+                    extra="对话中开启知识库检索时，最多选择多少个相关知识片段作为回答依据。实际命中数可能更少，取值范围为 1-10。"
                   >
-                    <Switch />
-                  </Form.Item>
-                  <Form.Item noStyle shouldUpdate={(prev, current) => prev.ragEnabled !== current.ragEnabled}>
-                    {({ getFieldValue }) =>
-                      getFieldValue('ragEnabled') ? (
-                        <Form.Item name="ragTopK" label="每轮最多引用条数">
-                          <InputNumber min={1} max={10} />
-                        </Form.Item>
-                      ) : null
-                    }
+                    <InputNumber min={1} max={10} />
                   </Form.Item>
                 </>
               ),
@@ -170,6 +249,17 @@ export function ModelConfigTab() {
 }
 
 function normalizeApiKeyInput(apiKey?: string) {
-  const value = apiKey?.replace(/^Bearer\s+/i, '').replace(/\s+/g, '');
+  const value = apiKey?.replace(/^Bearer\s+/i, "").replace(/\s+/g, "");
   return value || undefined;
+}
+
+function normalizeConfigInput(values: LlmConfigInput): LlmConfigInput {
+  return {
+    ...values,
+    diagnosisWesternModel: values.diagnosisWesternModel?.trim() || undefined,
+    diagnosisTcmModel: values.diagnosisTcmModel?.trim() || undefined,
+    diagnosisReviewerModel: values.diagnosisReviewerModel?.trim() || undefined,
+    diagnosisIntegratorModel:
+      values.diagnosisIntegratorModel?.trim() || undefined,
+  };
 }

@@ -45,7 +45,7 @@ export class RedFlagTriageService {
       addFinding(findings, '严重过敏反应', '喉头紧、喘鸣、面唇舌肿胀或全身风团伴呼吸症状可能是严重过敏。', matched(text, ['喉头紧', '喘鸣', '嘴唇肿', '舌头肿', '全身风团']));
     }
     if (hasAny(text, ['持续呕吐', '持续腹泻', '尿少', '脱水', '极度乏力'])) {
-      addFinding(findings, '脱水或电解质紊乱风险', '持续呕吐、腹泻、尿少或极度乏力可能需要医疗评估。', matched(text, ['持续呕吐', '持续腹泻', '尿少', '脱水']));
+      addFinding(findings, '脱水或电解质紊乱风险', '持续呕吐、腹泻、尿少或极度乏力需要尽快医疗评估。', matched(text, ['持续呕吐', '持续腹泻', '尿少', '脱水']), 'urgent');
     }
 
     const vitals = input.vitals ?? {};
@@ -58,7 +58,7 @@ export class RedFlagTriageService {
       }
     }
     if (typeof vitals.heartRate === 'number' && (vitals.heartRate > 120 || vitals.heartRate < 50)) {
-      addFinding(findings, '心率明显异常', `心率 ${vitals.heartRate} 次/分明显异常，若伴随不适需及时评估。`, [`HR ${vitals.heartRate}`]);
+      addFinding(findings, '心率明显异常', `心率 ${vitals.heartRate} 次/分明显异常，需要尽快评估；如伴胸痛、呼吸困难或晕厥应立即就医。`, [`HR ${vitals.heartRate}`], 'urgent');
     }
     if (typeof vitals.temperatureCelsius === 'number' && vitals.temperatureCelsius >= 40) {
       addFinding(findings, '高热', `体温 ${vitals.temperatureCelsius}℃ 达到高热危险阈值。`, [`T ${vitals.temperatureCelsius}℃`]);
@@ -67,9 +67,11 @@ export class RedFlagTriageService {
       addFinding(findings, '呼吸频率明显异常', `呼吸频率 ${vitals.respiratoryRate} 次/分明显异常。`, [`RR ${vitals.respiratoryRate}`]);
     }
 
+    const hasEmergency = findings.some((finding) => finding.urgency === 'emergency');
+    const hasUrgent = findings.some((finding) => finding.urgency === 'urgent');
     return {
-      safetyLevel: findings.length ? 'emergency' : 'supportive',
-      mustSeekImmediateCare: findings.length > 0,
+      safetyLevel: hasEmergency ? 'emergency' : hasUrgent ? 'urgent' : 'supportive',
+      mustSeekImmediateCare: hasEmergency,
       findings,
     };
   }
@@ -78,7 +80,7 @@ export class RedFlagTriageService {
 function collectText(input: DiagnosisInput) {
   return [
     input.chiefComplaint,
-    input.freeText,
+    triageRelevantFreeText(input.freeText),
     ...input.symptoms.flatMap((symptom) => [
       symptom.name,
       symptom.bodyPart,
@@ -107,21 +109,49 @@ function matched(text: string, keywords: string[]) {
   return keywords.filter((keyword) => hasAffirmedKeyword(text, keyword.toLowerCase()));
 }
 
-function hasAffirmedKeyword(text: string, keyword: string) {
+export function hasAffirmedKeyword(text: string, keyword: string) {
   let index = text.indexOf(keyword);
   while (index >= 0) {
-    if (!isNegatedNear(text, index)) return true;
+    if (!isNegatedNear(text, index) && !isResolvedHistoryNear(text, index) && !isOtherPersonNear(text, index)) return true;
     index = text.indexOf(keyword, index + keyword.length);
   }
   return false;
 }
 
-function isNegatedNear(text: string, keywordIndex: number) {
-  const before = text.slice(Math.max(0, keywordIndex - 12), keywordIndex);
-  const compactBefore = before.replace(/\s+/g, '');
-  return /(?:无|没有|沒?有|否认|未见|未出现|未伴|不伴|不伴有|并无|並無|并未|不是|并非|未诉|未提及|无明显|没有明显)$/.test(compactBefore);
+function triageRelevantFreeText(value: string | undefined) {
+  if (!value?.includes('预问诊 Agent 追问与用户回答：')) return value;
+  return value
+    .split(/\r?\n/)
+    .filter((line) => !line.trim().startsWith('问：'))
+    .map((line) => line.replace(/^答：\s*/, ''))
+    .join(' ');
 }
 
-function addFinding(findings: RedFlagFinding[], category: string, reason: string, matchedEvidence: string[]) {
-  findings.push({ category, reason, matchedEvidence, urgency: 'emergency' });
+function isResolvedHistoryNear(text: string, keywordIndex: number) {
+  const before = text.slice(Math.max(0, keywordIndex - 16), keywordIndex).replace(/\s+/g, '');
+  return /(?:曾经|以前|去年|多年前|已缓解|已经缓解|已消失|已经消失|早已).{0,6}$/.test(before);
+}
+
+function isOtherPersonNear(text: string, keywordIndex: number) {
+  const before = text.slice(Math.max(0, keywordIndex - 10), keywordIndex).replace(/\s+/g, '');
+  return /(?:父亲|母亲|爸爸|妈妈|家人|朋友|孩子|同事|患者).{0,2}$/.test(before);
+}
+
+function isNegatedNear(text: string, keywordIndex: number) {
+  const before = text.slice(Math.max(0, keywordIndex - 24), keywordIndex);
+  const compactBefore = before.replace(/\s+/g, '');
+  return (
+    /(?:无|没有|沒有|否认|未见|未出现|未伴|不伴|不伴有|并无|並無|并未|不是|并非|未诉|未提及|无明显|没有明显)$/.test(compactBefore) ||
+    /(?:无|没有|沒有|否认|未见|未出现|不伴|并无|並無)[^，。；！？但]{0,18}(?:或|、|和|及|以及)$/.test(compactBefore)
+  );
+}
+
+function addFinding(
+  findings: RedFlagFinding[],
+  category: string,
+  reason: string,
+  matchedEvidence: string[],
+  urgency: RedFlagFinding['urgency'] = 'emergency',
+) {
+  findings.push({ category, reason, matchedEvidence, urgency });
 }

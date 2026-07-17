@@ -1,4 +1,5 @@
-import { api } from './client';
+import type { GenerationStatus } from "@health/shared";
+import { api } from "./client";
 
 export type AgentRunStep = {
   at: string;
@@ -11,7 +12,7 @@ export type AgentRunStep = {
 export type AgentRun = {
   id: string;
   kind: string;
-  status: 'running' | 'completed' | 'failed' | string;
+  status: "running" | "completed" | "failed" | string;
   conversationId?: string | null;
   diagnosisSessionId?: string | null;
   input?: unknown;
@@ -33,6 +34,7 @@ export type AgentRun = {
     id: string;
     status: string;
     safetyLevel?: string | null;
+    generationStatus?: GenerationStatus | null;
     createdAt: string;
   } | null;
 };

@@ -1,36 +1,92 @@
-import { Alert, Button, Card, Collapse, Empty, List, Space, Steps, Tabs, Tag, Typography } from 'antd';
+import {
+  Alert,
+  Button,
+  Card,
+  Collapse,
+  Empty,
+  Input,
+  List,
+  Space,
+  Steps,
+  Tabs,
+  Tag,
+  Typography,
+} from "antd";
 import {
   CheckCircleOutlined,
   HeartOutlined,
   MedicineBoxOutlined,
   PlusCircleOutlined,
   SafetyOutlined,
-} from '@ant-design/icons';
-import type { ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
-import type { DiagnosisSession, GenerationStatus, IntegratedDiagnosisResult, TcmAssessment, WesternAssessment } from '@health/shared';
-import { ExpertPanel } from './ExpertPanel';
-import { RedFlagAlert } from './RedFlagAlert';
+} from "@ant-design/icons";
+import type {
+  AnchorHTMLAttributes,
+  ReactNode,
+  TableHTMLAttributes,
+} from "react";
+import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type {
+  DiagnosisSession,
+  GenerationStatus,
+  IntegratedDiagnosisResult,
+  TcmAssessment,
+  WesternAssessment,
+} from "@health/shared";
+import { ExpertPanel } from "./ExpertPanel";
+import { RedFlagAlert } from "./RedFlagAlert";
 
 const CATEGORY_LABELS: Record<string, string> = {
-  medical_care: '就医/评估',
-  monitoring: '观察记录',
-  lifestyle: '生活方式',
-  tcm_regulation: '中医调养',
-  avoidance: '避免事项',
+  medical_care: "就医/评估",
+  monitoring: "观察记录",
+  lifestyle: "生活方式",
+  tcm_regulation: "中医调养",
+  avoidance: "避免事项",
 };
 
 const PRIORITY_LABELS: Record<string, string> = {
-  immediate: '立即',
-  soon: '尽快',
-  routine: '日常',
+  immediate: "立即",
+  soon: "尽快",
+  routine: "日常",
 };
 
-const FALLBACK_KEYWORDS = ['结构化输出暂不可用', '输出暂不可用', '专家输出暂不可用'];
+const FALLBACK_KEYWORDS = [
+  "结构化输出暂不可用",
+  "输出暂不可用",
+  "专家输出暂不可用",
+];
 
-export function DiagnosisResult({ session }: { session?: DiagnosisSession | null }) {
-  const navigate = useNavigate();
+const diagnosisMarkdownComponents = {
+  a: ({
+    node: _node,
+    ...props
+  }: AnchorHTMLAttributes<HTMLAnchorElement> & { node?: unknown }) => (
+    <a {...props} target="_blank" rel="noreferrer" />
+  ),
+  table: ({
+    node: _node,
+    ...props
+  }: TableHTMLAttributes<HTMLTableElement> & { node?: unknown }) => (
+    <div className="diagnosis-markdown-table-wrap">
+      <table {...props} />
+    </div>
+  ),
+};
 
+export function DiagnosisResult({
+  session,
+  onSupplement,
+  supplementLoading,
+  onRetry,
+  retryLoading,
+}: {
+  session?: DiagnosisSession | null;
+  onSupplement?: (additionalInformation: string) => Promise<void>;
+  supplementLoading?: boolean;
+  onRetry?: () => Promise<void>;
+  retryLoading?: boolean;
+}) {
   if (!session) {
     return (
       <Card className="diagnosis-empty-card">
@@ -39,25 +95,63 @@ export function DiagnosisResult({ session }: { session?: DiagnosisSession | null
     );
   }
 
-  const result = session.integratedOutput as IntegratedDiagnosisResult | null | undefined;
+  const result = session.integratedOutput as
+    IntegratedDiagnosisResult | null | undefined;
   const western = session.westernOutput as WesternAssessment | null | undefined;
   const tcm = session.tcmOutput as TcmAssessment | null | undefined;
   const generationStatus = getGenerationStatus(session);
-  const westernAvailable = Boolean(western) && generationStatus.western === 'complete' && !containsFallbackText(western);
-  const tcmAvailable = Boolean(tcm) && generationStatus.tcm === 'complete' && !containsFallbackText(tcm);
+  const westernAvailable =
+    Boolean(western) &&
+    generationStatus.western === "complete" &&
+    !containsFallbackText(western);
+  const tcmAvailable =
+    Boolean(tcm) &&
+    generationStatus.tcm === "complete" &&
+    !containsFallbackText(tcm);
   const canShowExpertPanel = Boolean(western || tcm);
 
   return (
-    <Space direction="vertical" size={16} className="diagnosis-result">
+    <div className="diagnosis-result">
+      {session.status === "pending" ? (
+        <Alert
+          type="info"
+          showIcon
+          message="重新会诊正在进行"
+          description="页面会自动更新；当前若显示报告，为上一次已完成的结果。"
+        />
+      ) : session.status === "failed" ? (
+        <Alert
+          type="error"
+          showIcon
+          message="上次会诊被中断或生成失败"
+          description="已保留此前可用结果，可以重新发起本次会诊。"
+          action={
+            <Button
+              type="primary"
+              danger
+              loading={retryLoading}
+              disabled={!onRetry}
+              onClick={() => void onRetry?.()}
+            >
+              重新会诊
+            </Button>
+          }
+        />
+      ) : null}
       <RedFlagAlert result={result} />
 
       {result ? (
         <>
           <div className="diagnosis-decision-layout">
-            <Card className="diagnosis-summary-card" bordered={false}>
+            <Card
+              className={`diagnosis-summary-card safety-${result.safetyLevel}`}
+              bordered={false}
+            >
               <div className="diagnosis-summary-head">
                 <div>
-                  <Typography.Text className="diagnosis-eyebrow">安全结论</Typography.Text>
+                  <Typography.Text className="diagnosis-eyebrow">
+                    安全结论
+                  </Typography.Text>
                   <Typography.Title level={3}>先看这一步</Typography.Title>
                 </div>
                 <SafetyTag level={result.safetyLevel} />
@@ -69,7 +163,11 @@ export function DiagnosisResult({ session }: { session?: DiagnosisSession | null
                   showIcon
                   className="diagnosis-quality-alert"
                   message="部分内容生成不完整"
-                  description={generationStatus.warnings.length ? generationStatus.warnings.join('；') : '当前结果包含保守兜底内容，建议稍后重试或检查模型配置。'}
+                  description={
+                    generationStatus.warnings.length
+                      ? generationStatus.warnings.join("；")
+                      : "当前结果包含保守兜底内容，建议稍后重试或检查模型配置。"
+                  }
                 />
               ) : null}
 
@@ -78,41 +176,79 @@ export function DiagnosisResult({ session }: { session?: DiagnosisSession | null
                   <SafetyOutlined />
                   <Typography.Text>重点结论</Typography.Text>
                 </div>
-                <Typography.Paragraph className="diagnosis-conclusion-text">
-                  {cleanFallbackText(result.summary, '当前信息不足以形成完整综合判断，请结合症状变化优先保障安全。')}
-                </Typography.Paragraph>
+                <div className="diagnosis-conclusion-text">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={diagnosisMarkdownComponents}
+                  >
+                    {cleanFallbackText(
+                      result.summary,
+                      "当前信息不足以形成完整综合判断，请结合症状变化优先保障安全。",
+                    )}
+                  </ReactMarkdown>
+                </div>
               </div>
 
-              <FollowUpHint result={result} onSupplement={() => navigate('/diagnosis')} />
+              <FollowUpHint
+                result={result}
+                onSupplement={onSupplement}
+                loading={supplementLoading}
+              />
             </Card>
 
-            <IntegratedAdviceCard result={result} integratedStatus={generationStatus.integrated} />
+            <IntegratedAdviceCard
+              result={result}
+              integratedStatus={generationStatus.integrated}
+            />
           </div>
 
-          <Tabs
-            className="diagnosis-detail-tabs"
-            items={[
-              {
-                key: 'western',
-                label: '西医详情',
-                children: <WesternAdviceCard assessment={western} available={westernAvailable} />,
-              },
-              {
-                key: 'tcm',
-                label: '中医详情',
-                children: <TcmAdviceCard assessment={tcm} available={tcmAvailable} />,
-              },
-              {
-                key: 'integrated',
-                label: '汇总详情',
-                children: <IntegratedDetailCard result={result} />,
-              },
-            ]}
+          <ActionChecklist
+            result={result}
+            western={westernAvailable ? western : null}
           />
 
-          <ExpertProcessCollapse western={western} tcm={tcm} generationStatus={generationStatus} visible={canShowExpertPanel} />
+          <section className="diagnosis-detail-section">
+            <div className="diagnosis-report-section-head">
+              <Typography.Text className="diagnosis-eyebrow">
+                详细意见
+              </Typography.Text>
+              <Typography.Title level={3}>进一步了解会诊依据</Typography.Title>
+            </div>
+            <Tabs
+              className="diagnosis-detail-tabs"
+              items={[
+                {
+                  key: "western",
+                  label: "西医详情",
+                  children: (
+                    <WesternAdviceCard
+                      assessment={western}
+                      available={westernAvailable}
+                    />
+                  ),
+                },
+                {
+                  key: "tcm",
+                  label: "中医详情",
+                  children: (
+                    <TcmAdviceCard assessment={tcm} available={tcmAvailable} />
+                  ),
+                },
+                {
+                  key: "integrated",
+                  label: "汇总详情",
+                  children: <IntegratedDetailCard result={result} />,
+                },
+              ]}
+            />
+          </section>
 
-          <ActionChecklist result={result} western={westernAvailable ? western : null} />
+          <ExpertProcessCollapse
+            western={western}
+            tcm={tcm}
+            generationStatus={generationStatus}
+            visible={canShowExpertPanel}
+          />
 
           <div className="diagnosis-disclaimer-text">
             <Typography.Text>{result.disclaimer}</Typography.Text>
@@ -120,10 +256,12 @@ export function DiagnosisResult({ session }: { session?: DiagnosisSession | null
         </>
       ) : (
         <Card>
-          <Typography.Text type="secondary">本次分析尚未生成完整结果。</Typography.Text>
+          <Typography.Text type="secondary">
+            本次分析尚未生成完整结果。
+          </Typography.Text>
         </Card>
       )}
-    </Space>
+    </div>
   );
 }
 
@@ -145,12 +283,22 @@ function ExpertProcessCollapse({
       ghost
       items={[
         {
-          key: 'expert',
-          label: '专家会诊细节（供参考）',
+          key: "expert",
+          label: "专家会诊细节（供参考）",
           children: (
-            <Space direction="vertical" size={14} className="diagnosis-expert-collapse-body">
-              <Typography.Text type="secondary">以下内容展示 AI 的分析推理过程，核心建议已在上方呈现。</Typography.Text>
-              <ExpertPanel western={western} tcm={tcm} generationStatus={generationStatus} />
+            <Space
+              direction="vertical"
+              size={14}
+              className="diagnosis-expert-collapse-body"
+            >
+              <Typography.Text type="secondary">
+                以下内容展示 AI 的分析推理过程，核心建议已在上方呈现。
+              </Typography.Text>
+              <ExpertPanel
+                western={western}
+                tcm={tcm}
+                generationStatus={generationStatus}
+              />
             </Space>
           ),
         },
@@ -159,24 +307,89 @@ function ExpertProcessCollapse({
   );
 }
 
-function FollowUpHint({ result, onSupplement }: { result: IntegratedDiagnosisResult; onSupplement: () => void }) {
+function FollowUpHint({
+  result,
+  onSupplement,
+  loading,
+}: {
+  result: IntegratedDiagnosisResult;
+  onSupplement?: (additionalInformation: string) => Promise<void>;
+  loading?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
   if (!result.needsFollowUp) return null;
   const questions = getFollowUpQuestions(result).slice(0, 3);
-  const hint = questions.length ? questions.join('、') : result.followUpReason || '更多症状细节';
+  const hint = questions.length
+    ? questions.join("、")
+    : result.followUpReason || "更多症状细节";
   return (
     <div className="diagnosis-followup-hint">
-      <Typography.Text type="secondary">补充以下信息可以获得更精准的建议：{hint}</Typography.Text>
-      <Button size="small" icon={<PlusCircleOutlined />} onClick={onSupplement}>
-        补充信息
-      </Button>
+      <Typography.Text type="secondary">
+        补充以下信息可以获得更精准的建议：{hint}
+      </Typography.Text>
+      {editing ? (
+        <Space direction="vertical" size={8} style={{ width: "100%" }}>
+          <Input.TextArea
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            rows={3}
+            maxLength={3000}
+            showCount
+            placeholder="按上方问题补充症状变化、持续时间、用药或检查信息"
+          />
+          <Space>
+            <Button
+              size="small"
+              type="primary"
+              loading={loading}
+              disabled={!value.trim() || !onSupplement}
+              onClick={async () => {
+                if (!onSupplement || !value.trim()) return;
+                await onSupplement(value.trim());
+                setValue("");
+                setEditing(false);
+              }}
+            >
+              重新会诊
+            </Button>
+            <Button
+              size="small"
+              disabled={loading}
+              onClick={() => setEditing(false)}
+            >
+              取消
+            </Button>
+          </Space>
+        </Space>
+      ) : (
+        <Button
+          size="small"
+          icon={<PlusCircleOutlined />}
+          onClick={() => setEditing(true)}
+          disabled={!onSupplement}
+        >
+          补充信息
+        </Button>
+      )}
     </div>
   );
 }
 
-function WesternAdviceCard({ assessment, available }: { assessment?: WesternAssessment | null; available: boolean }) {
+function WesternAdviceCard({
+  assessment,
+  available,
+}: {
+  assessment?: WesternAssessment | null;
+  available: boolean;
+}) {
   return (
     <Card className="diagnosis-advice-card western" bordered={false}>
-      <AdviceHeader icon={<MedicineBoxOutlined />} eyebrow="西医建议" title="先排查风险" />
+      <AdviceHeader
+        icon={<MedicineBoxOutlined />}
+        eyebrow="西医建议"
+        title="先排查风险"
+      />
       {!available || !assessment ? (
         <UnavailableNotice message="本次西医结构化分析未成功生成" />
       ) : (
@@ -187,74 +400,135 @@ function WesternAdviceCard({ assessment, available }: { assessment?: WesternAsse
             items={assessment.recommendedChecks.map((item) => ({
               title: item.name,
               tag: PRIORITY_LABELS[item.timing] ?? item.timing,
-              content: cleanFallbackText(item.reason, '用于确认症状性质和排除风险。'),
+              content: cleanFallbackText(
+                item.reason,
+                "用于确认症状性质和排除风险。",
+              ),
             }))}
           />
-          <InfoList title="什么时候需要就医" items={assessment.seekCareCriteria} />
-          <InfoList title="自我照护边界" items={assessment.selfCareBoundaries} />
+          <InfoList
+            title="什么时候需要就医"
+            items={assessment.seekCareCriteria}
+          />
+          <InfoList
+            title="自我照护边界"
+            items={assessment.selfCareBoundaries}
+          />
         </Space>
       )}
     </Card>
   );
 }
 
-function TcmAdviceCard({ assessment, available }: { assessment?: TcmAssessment | null; available: boolean }) {
+function TcmAdviceCard({
+  assessment,
+  available,
+}: {
+  assessment?: TcmAssessment | null;
+  available: boolean;
+}) {
   return (
     <Card className="diagnosis-advice-card tcm" bordered={false}>
-      <AdviceHeader icon={<HeartOutlined />} eyebrow="中医建议" title="低风险调养" />
+      <AdviceHeader
+        icon={<HeartOutlined />}
+        eyebrow="中医建议"
+        title="低风险调养"
+      />
       {!available || !assessment ? (
         <UnavailableNotice message="本次中医结构化分析未成功生成" />
       ) : (
         <Space direction="vertical" size={12} className="diagnosis-advice-body">
           <div className="diagnosis-rationale-box compact">
             <Typography.Text type="secondary">辨证说明</Typography.Text>
-            <Typography.Paragraph>{cleanFallbackText(assessment.constitutionAndPatternRationale, '需要结合舌象、脉象和整体信息进一步辨证。')}</Typography.Paragraph>
+            <Typography.Paragraph>
+              {cleanFallbackText(
+                assessment.constitutionAndPatternRationale,
+                "需要结合舌象、脉象和整体信息进一步辨证。",
+              )}
+            </Typography.Paragraph>
           </div>
           <MiniAdviceList
             title="调养建议"
             empty="暂无调养建议"
             items={assessment.regulationSuggestions.map((item) => ({
               title: TCM_CATEGORY_LABELS[item.category] ?? item.category,
-              content: `${cleanFallbackText(item.suggestion, '保持规律作息，避免过劳。')}${item.safetyNote ? `；${cleanFallbackText(item.safetyNote, '症状加重时优先线下就医。')}` : ''}`,
+              content: `${cleanFallbackText(item.suggestion, "保持规律作息，避免过劳。")}${item.safetyNote ? `；${cleanFallbackText(item.safetyNote, "症状加重时优先线下就医。")}` : ""}`,
             }))}
           />
           <InfoList title="禁忌提醒" items={assessment.contraindications} />
-          <InfoList title="建议补充舌脉信息" items={assessment.tonguePulseQuestions} />
+          <InfoList
+            title="建议补充舌脉信息"
+            items={assessment.tonguePulseQuestions}
+          />
         </Space>
       )}
     </Card>
   );
 }
 
-function IntegratedAdviceCard({ result, integratedStatus }: { result: IntegratedDiagnosisResult; integratedStatus: GenerationStatus['integrated'] }) {
-  const recommendations = (result.integrativeRecommendations ?? []).filter((item) => !containsFallbackText(item));
-  const immediateItems = recommendations.filter((item) => item.priority === 'immediate');
-  const soonItems = recommendations.filter((item) => item.priority === 'soon');
-  const routineItems = recommendations.filter((item) => item.priority === 'routine');
+function IntegratedAdviceCard({
+  result,
+  integratedStatus,
+}: {
+  result: IntegratedDiagnosisResult;
+  integratedStatus: GenerationStatus["integrated"];
+}) {
+  const recommendations = (result.integrativeRecommendations ?? []).filter(
+    (item) => !containsFallbackText(item),
+  );
+  const immediateItems = recommendations.filter(
+    (item) => item.priority === "immediate",
+  );
+  const soonItems = recommendations.filter((item) => item.priority === "soon");
+  const routineItems = recommendations.filter(
+    (item) => item.priority === "routine",
+  );
   const urgentCount = immediateItems.length + soonItems.length;
   return (
     <Card className="diagnosis-advice-card integrated" bordered={false}>
-      <AdviceHeader icon={<CheckCircleOutlined />} eyebrow="汇总建议" title="下一步怎么做" />
-      {integratedStatus === 'fallback' ? (
-        <Alert type="warning" showIcon className="diagnosis-quality-alert" message="汇总为保守安全建议" description="请优先关注症状变化和红旗信号，必要时线下就医。" />
+      <AdviceHeader
+        icon={<CheckCircleOutlined />}
+        eyebrow="汇总建议"
+        title="下一步怎么做"
+      />
+      {integratedStatus === "fallback" ? (
+        <Alert
+          type="warning"
+          showIcon
+          className="diagnosis-quality-alert"
+          message="汇总为保守安全建议"
+          description="请优先关注症状变化和红旗信号，必要时线下就医。"
+        />
       ) : null}
       <Space direction="vertical" size={12} className="diagnosis-advice-body">
         {recommendations.length ? (
           <>
             <div className="diagnosis-integrated-summary">
               <Typography.Text strong>
-                你有 {urgentCount} 项需要尽快关注，{routineItems.length} 项日常建议
+                你有 {urgentCount} 项需要尽快关注，{routineItems.length}{" "}
+                项日常建议
               </Typography.Text>
-              <Typography.Text type="secondary">先处理高优先级事项，日常建议可按状态慢慢执行。</Typography.Text>
+              <Typography.Text type="secondary">
+                先处理高优先级事项，日常建议可按状态慢慢执行。
+              </Typography.Text>
             </div>
             {urgentCount ? (
               <>
-                {immediateItems.length ? <RecommendationGroup title="立即处理" items={immediateItems} /> : null}
-                {soonItems.length ? <RecommendationGroup title="尽快关注" items={soonItems} /> : null}
+                {immediateItems.length ? (
+                  <RecommendationGroup
+                    title="立即处理"
+                    items={immediateItems}
+                  />
+                ) : null}
+                {soonItems.length ? (
+                  <RecommendationGroup title="尽快关注" items={soonItems} />
+                ) : null}
               </>
             ) : (
               <div className="diagnosis-low-urgency-note">
-                <Typography.Text type="secondary">暂无需要立即处理的事项，可先按日常建议观察和调整。</Typography.Text>
+                <Typography.Text type="secondary">
+                  暂无需要立即处理的事项，可先按日常建议观察和调整。
+                </Typography.Text>
               </div>
             )}
             {routineItems.length ? (
@@ -263,7 +537,7 @@ function IntegratedAdviceCard({ result, integratedStatus }: { result: Integrated
                 ghost
                 items={[
                   {
-                    key: 'routine',
+                    key: "routine",
                     label: `展开 ${routineItems.length} 项日常建议`,
                     children: <RecommendationGroup items={routineItems} />,
                   },
@@ -272,17 +546,30 @@ function IntegratedAdviceCard({ result, integratedStatus }: { result: Integrated
             ) : null}
           </>
         ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无汇总建议" />
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="暂无汇总建议"
+          />
         )}
       </Space>
     </Card>
   );
 }
 
-function RecommendationGroup({ title, items, empty }: { title?: string; items: IntegratedDiagnosisResult['integrativeRecommendations']; empty?: string }) {
+function RecommendationGroup({
+  title,
+  items,
+  empty,
+}: {
+  title?: string;
+  items: IntegratedDiagnosisResult["integrativeRecommendations"];
+  empty?: string;
+}) {
   const visibleItems = items.filter((item) => !containsFallbackText(item));
   if (!visibleItems.length) {
-    return empty ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={empty} /> : null;
+    return empty ? (
+      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={empty} />
+    ) : null;
   }
   return (
     <section className="diagnosis-priority-group">
@@ -296,23 +583,41 @@ function RecommendationGroup({ title, items, empty }: { title?: string; items: I
   );
 }
 
-function RecommendationItem({ item }: { item: IntegratedDiagnosisResult['integrativeRecommendations'][number] }) {
+function RecommendationItem({
+  item,
+}: {
+  item: IntegratedDiagnosisResult["integrativeRecommendations"][number];
+}) {
   return (
     <div className={`diagnosis-recommendation-card priority-${item.priority}`}>
       <Space size={8} wrap>
         <Typography.Text strong>{item.title}</Typography.Text>
-        <Tag color={priorityColor(item.priority)}>{PRIORITY_LABELS[item.priority] ?? item.priority}</Tag>
+        <Tag color={priorityColor(item.priority)}>
+          {PRIORITY_LABELS[item.priority] ?? item.priority}
+        </Tag>
       </Space>
-      <Typography.Paragraph>{cleanFallbackText(item.details, '请结合症状变化采取保守安全措施。')}</Typography.Paragraph>
-      <Typography.Text type="secondary">{CATEGORY_LABELS[item.category] ?? item.category}</Typography.Text>
+      <Typography.Paragraph>
+        {cleanFallbackText(item.details, "请结合症状变化采取保守安全措施。")}
+      </Typography.Paragraph>
+      <Typography.Text type="secondary">
+        {CATEGORY_LABELS[item.category] ?? item.category}
+      </Typography.Text>
     </div>
   );
 }
 
-function IntegratedDetailCard({ result }: { result: IntegratedDiagnosisResult }) {
+function IntegratedDetailCard({
+  result,
+}: {
+  result: IntegratedDiagnosisResult;
+}) {
   return (
     <Card className="diagnosis-advice-card integrated" bordered={false}>
-      <AdviceHeader icon={<CheckCircleOutlined />} eyebrow="汇总详情" title="依据与补充信息" />
+      <AdviceHeader
+        icon={<CheckCircleOutlined />}
+        eyebrow="汇总详情"
+        title="依据与补充信息"
+      />
       <Space direction="vertical" size={12} className="diagnosis-advice-body">
         <InfoList title="需要补充的信息" items={getFollowUpQuestions(result)} />
         <InfoList title="分歧处理" items={result.conflictResolution} />
@@ -321,7 +626,7 @@ function IntegratedDetailCard({ result }: { result: IntegratedDiagnosisResult })
           empty="暂无红旗信号记录"
           items={(result.redFlagCoverage ?? []).map((item) => ({
             title: item.category,
-            tag: item.positive ? '需关注' : item.checked ? '已排查' : '待确认',
+            tag: item.positive ? "需关注" : item.checked ? "已排查" : "待确认",
             content: item.note,
           }))}
         />
@@ -330,37 +635,64 @@ function IntegratedDetailCard({ result }: { result: IntegratedDiagnosisResult })
   );
 }
 
-function ActionChecklist({ result, western }: { result: IntegratedDiagnosisResult; western?: WesternAssessment | null }) {
-  const recommendations = (result.integrativeRecommendations ?? []).filter((item) => !containsFallbackText(item));
-  const immediate = recommendations.find((item) => item.priority === 'immediate');
-  const soon = recommendations.find((item) => item.priority === 'soon');
-  const routine = recommendations.find((item) => item.priority === 'routine');
+function ActionChecklist({
+  result,
+  western,
+}: {
+  result: IntegratedDiagnosisResult;
+  western?: WesternAssessment | null;
+}) {
+  const recommendations = (result.integrativeRecommendations ?? []).filter(
+    (item) => !containsFallbackText(item),
+  );
+  const immediate = recommendations.find(
+    (item) => item.priority === "immediate",
+  );
+  const soon = recommendations.find((item) => item.priority === "soon");
+  const routine = recommendations.find((item) => item.priority === "routine");
   const seekCare = filterFallbackItems(western?.seekCareCriteria ?? []);
-  const emergencyReasons = filterFallbackItems(result.immediateCareReasons ?? []);
-  const redFlags = filterFallbackItems((result.redFlagCoverage ?? []).filter((item) => item.positive).map((item) => item.note));
+  const emergencyReasons = filterFallbackItems(
+    result.immediateCareReasons ?? [],
+  );
+  const redFlags = filterFallbackItems(
+    (result.redFlagCoverage ?? [])
+      .filter((item) => item.positive)
+      .map((item) => item.note),
+  );
   const emergencyText =
     emergencyReasons[0] ||
     redFlags[0] ||
     seekCare[0] ||
-    (result.mustSeekImmediateCare || result.safetyLevel === 'emergency' || result.safetyLevel === 'urgent'
-      ? '症状明显加重、出现红旗信号或无法自行判断时，立即线下就医。'
-      : '出现明显加重、持续不缓解或新的危险症状时，及时线下就医。');
+    (result.mustSeekImmediateCare ||
+    result.safetyLevel === "emergency" ||
+    result.safetyLevel === "urgent"
+      ? "症状明显加重、出现红旗信号或无法自行判断时，立即线下就医。"
+      : "出现明显加重、持续不缓解或新的危险症状时，及时线下就医。");
 
   const items = [
     {
-      title: '今天',
-      description: summarizeAction(immediate, '观察症状变化，记录体温、心率、疼痛/不适程度和诱因。'),
+      title: "今天",
+      description: summarizeAction(
+        immediate,
+        "观察症状变化，记录体温、心率、疼痛/不适程度和诱因。",
+      ),
     },
     {
-      title: '本周',
-      description: summarizeAction(soon, '如果不适持续或反复，预约相应科室做进一步评估。'),
+      title: "本周",
+      description: summarizeAction(
+        soon,
+        "如果不适持续或反复，预约相应科室做进一步评估。",
+      ),
     },
     {
-      title: '日常',
-      description: summarizeAction(routine, '保持规律作息，避免过劳，按身体反应逐步调整生活方式。'),
+      title: "日常",
+      description: summarizeAction(
+        routine,
+        "保持规律作息，避免过劳，按身体反应逐步调整生活方式。",
+      ),
     },
     {
-      title: '紧急情况',
+      title: "紧急情况",
       description: emergencyText,
     },
   ].filter((item) => Boolean(item.description));
@@ -384,18 +716,32 @@ function ActionChecklist({ result, western }: { result: IntegratedDiagnosisResul
   );
 }
 
-function summarizeAction(item: IntegratedDiagnosisResult['integrativeRecommendations'][number] | undefined, fallback: string) {
+function summarizeAction(
+  item:
+    IntegratedDiagnosisResult["integrativeRecommendations"][number] | undefined,
+  fallback: string,
+) {
   if (!item) return fallback;
   const details = cleanFallbackText(item.details, fallback);
   return `${item.title}：${details}`;
 }
 
-function AdviceHeader({ icon, eyebrow, title }: { icon: ReactNode; eyebrow: string; title: string }) {
+function AdviceHeader({
+  icon,
+  eyebrow,
+  title,
+}: {
+  icon: ReactNode;
+  eyebrow: string;
+  title: string;
+}) {
   return (
     <div className="diagnosis-advice-header">
       <span className="diagnosis-advice-icon">{icon}</span>
       <div>
-        <Typography.Text className="diagnosis-eyebrow">{eyebrow}</Typography.Text>
+        <Typography.Text className="diagnosis-eyebrow">
+          {eyebrow}
+        </Typography.Text>
         <Typography.Title level={4}>{title}</Typography.Title>
       </div>
     </div>
@@ -403,14 +749,32 @@ function AdviceHeader({ icon, eyebrow, title }: { icon: ReactNode; eyebrow: stri
 }
 
 function UnavailableNotice({ message }: { message: string }) {
-  return <Alert type="warning" showIcon message={message} description="可稍后重试，或检查模型、API Key、Base URL 等配置；当前不把降级内容当作正式建议展示。" />;
+  return (
+    <Alert
+      type="warning"
+      showIcon
+      message={message}
+      description="可稍后重试，或检查模型、API Key、Base URL 等配置；当前不把降级内容当作正式建议展示。"
+    />
+  );
 }
 
 function getFollowUpQuestions(result: IntegratedDiagnosisResult) {
-  return filterFallbackItems([...(result.requiredFollowUpQuestions ?? []), ...(result.followUpQuestions ?? [])]).filter((item, index, array) => array.indexOf(item) === index);
+  return filterFallbackItems([
+    ...(result.requiredFollowUpQuestions ?? []),
+    ...(result.followUpQuestions ?? []),
+  ]).filter((item, index, array) => array.indexOf(item) === index);
 }
 
-function MiniAdviceList({ title, empty, items }: { title: string; empty: string; items: Array<{ title: string; tag?: string; content: string }> }) {
+function MiniAdviceList({
+  title,
+  empty,
+  items,
+}: {
+  title: string;
+  empty: string;
+  items: Array<{ title: string; tag?: string; content: string }>;
+}) {
   const visibleItems = items.filter((item) => !containsFallbackText(item));
   return (
     <section className="diagnosis-section compact">
@@ -440,7 +804,11 @@ function InfoList({ title, items }: { title: string; items?: string[] }) {
   return (
     <div className="diagnosis-info-list">
       <Typography.Title level={5}>{title}</Typography.Title>
-      <List size="small" dataSource={visibleItems} renderItem={(item) => <List.Item>{item}</List.Item>} />
+      <List
+        size="small"
+        dataSource={visibleItems}
+        renderItem={(item) => <List.Item>{item}</List.Item>}
+      />
     </div>
   );
 }
@@ -456,42 +824,48 @@ function SafetyTag({ level }: { level: string }) {
 function getGenerationStatus(session: DiagnosisSession): GenerationStatus {
   if (session.generationStatus) return session.generationStatus;
 
-  const western = containsFallbackText(session.westernOutput) ? 'fallback' : 'complete';
-  const tcm = containsFallbackText(session.tcmOutput) ? 'fallback' : 'complete';
-  const integrated = containsFallbackText(session.integratedOutput) ? 'fallback' : 'complete';
-  const degraded = western === 'fallback' || tcm === 'fallback' || integrated === 'fallback';
-  const overall = integrated === 'fallback' ? 'fallback' : degraded ? 'partial' : 'complete';
-  const warnings = degraded ? ['历史结果包含降级内容，已隐藏不可用文案。'] : [];
+  const western = containsFallbackText(session.westernOutput)
+    ? "fallback"
+    : "complete";
+  const tcm = containsFallbackText(session.tcmOutput) ? "fallback" : "complete";
+  const integrated = containsFallbackText(session.integratedOutput)
+    ? "fallback"
+    : "complete";
+  const degraded =
+    western === "fallback" || tcm === "fallback" || integrated === "fallback";
+  const overall =
+    integrated === "fallback" ? "fallback" : degraded ? "partial" : "complete";
+  const warnings = degraded ? ["历史结果包含降级内容，已隐藏不可用文案。"] : [];
   return { western, tcm, integrated, overall, degraded, warnings };
 }
 
 function safetyColor(level: string) {
-  if (level === 'emergency') return 'red';
-  if (level === 'urgent') return 'orange';
-  if (level === 'clinician_recommended') return 'blue';
-  return 'green';
+  if (level === "emergency") return "red";
+  if (level === "urgent") return "orange";
+  if (level === "clinician_recommended") return "blue";
+  return "green";
 }
 
 function safetyText(level: string) {
-  if (level === 'emergency') return '立即就医';
-  if (level === 'urgent') return '尽快就医';
-  if (level === 'clinician_recommended') return '建议咨询医生';
-  return '支持性建议';
+  if (level === "emergency") return "立即就医";
+  if (level === "urgent") return "尽快就医";
+  if (level === "clinician_recommended") return "建议咨询医生";
+  return "支持性建议";
 }
 
 function priorityColor(priority: string) {
-  if (priority === 'immediate') return 'red';
-  if (priority === 'soon') return 'orange';
-  return 'blue';
+  if (priority === "immediate") return "red";
+  if (priority === "soon") return "orange";
+  return "blue";
 }
 
 const TCM_CATEGORY_LABELS: Record<string, string> = {
-  diet: '饮食',
-  routine: '作息',
-  emotion: '情志',
-  movement: '运动',
-  acupressure: '穴位按揉',
-  other: '其他',
+  diet: "饮食",
+  routine: "作息",
+  emotion: "情志",
+  movement: "运动",
+  acupressure: "穴位按揉",
+  other: "其他",
 };
 
 function filterFallbackItems(items: string[]) {
@@ -503,5 +877,7 @@ function cleanFallbackText(value: string, replacement: string) {
 }
 
 function containsFallbackText(value: unknown) {
-  return FALLBACK_KEYWORDS.some((keyword) => JSON.stringify(value ?? '').includes(keyword));
+  return FALLBACK_KEYWORDS.some((keyword) =>
+    JSON.stringify(value ?? "").includes(keyword),
+  );
 }

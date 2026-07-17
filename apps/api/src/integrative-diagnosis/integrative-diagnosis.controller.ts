@@ -20,6 +20,16 @@ export class IntegrativeDiagnosisController {
     return this.diagnosis.create(user, body);
   }
 
+  @Post(':id/supplement')
+  supplement(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
+    return this.diagnosis.supplement(user, id, body);
+  }
+
+  @Post(':id/retry')
+  retry(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.diagnosis.retry(user, id);
+  }
+
   @Get()
   list(@CurrentUser() user: AuthUser) {
     return this.diagnosis.list(user);

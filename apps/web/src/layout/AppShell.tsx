@@ -16,6 +16,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { getAvatarImageSrc } from '../api/auth';
 import { useAuth } from '../hooks/useAuth';
 import { AuthPage } from '../pages/AuthPage';
+import { useTheme } from '../theme/ThemeProvider';
 
 const { Content, Sider } = Layout;
 
@@ -31,6 +32,7 @@ export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, loading, logout } = useAuth();
+  const { resolvedTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
   const visibleNavItems = useMemo(
     () => (user?.role === 'admin' ? [...navItems, { key: '/admin/users', icon: <TeamOutlined />, label: '用户管理' }] : navItems),
@@ -67,7 +69,7 @@ export function AppShell() {
         collapsedWidth={88}
         collapsed={collapsed}
         trigger={null}
-        theme="light"
+        theme={resolvedTheme}
         className={collapsed ? 'app-sider app-sider-collapsed' : 'app-sider'}
       >
         <div className="brand-panel">

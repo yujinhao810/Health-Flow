@@ -2,6 +2,7 @@
 import { AuthModule } from '../auth/auth.module';
 import { AgentRunsModule } from '../agent-runs/agent-runs.module';
 import { LlmModule } from '../llm/llm.module';
+import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { MemoryModule } from '../memory/memory.module';
 import { SafetyModule } from '../safety/safety.module';
 import { SettingsModule } from '../settings/settings.module';
@@ -12,7 +13,7 @@ import { IntegrativeDiagnosisService } from './integrative-diagnosis.service';
 import { RedFlagTriageService } from './red-flag-triage.service';
 
 @Module({
-  imports: [AgentRunsModule, AuthModule, LlmModule, MemoryModule, SafetyModule, SettingsModule, SnapshotsModule],
+  imports: [AgentRunsModule, AuthModule, KnowledgeModule, LlmModule, MemoryModule, SafetyModule, SettingsModule, SnapshotsModule],
   controllers: [IntegrativeDiagnosisController],
   providers: [DiagnosisContextService, IntegrativeDiagnosisService, RedFlagTriageService],
 })

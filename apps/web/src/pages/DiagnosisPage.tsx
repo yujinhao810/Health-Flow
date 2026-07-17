@@ -1,55 +1,79 @@
-import { HistoryOutlined, UpOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Col, Empty, List, Popconfirm, Row, Space, Tag, Typography, message } from 'antd';
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import type { DiagnosisInput, DiagnosisSafetyLevel } from '@health/shared';
-import { GradientText } from '../components/effects/GradientText';
-import { DiagnosisForm } from '../components/diagnosis/DiagnosisForm';
-import { useDiagnosis } from '../hooks/useDiagnosis';
+import { HistoryOutlined, UpOutlined } from "@ant-design/icons";
+import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  Empty,
+  List,
+  Popconfirm,
+  Row,
+  Space,
+  Tag,
+  Typography,
+  message,
+} from "antd";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type { DiagnosisInput, DiagnosisSafetyLevel } from "@health/shared";
+import { GradientText } from "../components/effects/GradientText";
+import { DiagnosisForm } from "../components/diagnosis/DiagnosisForm";
+import { useDiagnosis } from "../hooks/useDiagnosis";
 
 const safetyLabels: Record<DiagnosisSafetyLevel, string> = {
-  emergency: '立即就医',
-  urgent: '尽快就医',
-  clinician_recommended: '建议咨询医生',
-  supportive: '支持观察',
+  emergency: "立即就医",
+  urgent: "尽快就医",
+  clinician_recommended: "建议咨询医生",
+  supportive: "支持观察",
 };
 
 const safetyColors: Record<DiagnosisSafetyLevel, string> = {
-  emergency: 'red',
-  urgent: 'orange',
-  clinician_recommended: 'blue',
-  supportive: 'green',
+  emergency: "red",
+  urgent: "orange",
+  clinician_recommended: "blue",
+  supportive: "green",
 };
 
 export function DiagnosisPage() {
   const navigate = useNavigate();
   const [showHistory, setShowHistory] = useState(false);
-  const { history, create, followUp, remove } = useDiagnosis({ historyEnabled: showHistory });
+  const { history, create, followUp, remove } = useDiagnosis({
+    historyEnabled: showHistory,
+  });
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function handleSubmit(input: DiagnosisInput) {
     try {
       const session = await create.mutateAsync(input);
       if (session.integratedOutput?.mustSeekImmediateCare) {
-        message.warning('已识别到需要立即就医的风险信号，请优先处理安全问题。');
+        message.warning("已识别到需要立即就医的风险信号，请优先处理安全问题。");
       } else if (session.integratedOutput?.needsFollowUp) {
-        message.warning('会诊已完成初步仲裁，但需要补充关键信息后再细化建议。');
+        message.warning("会诊已完成初步仲裁，但需要补充关键信息后再细化建议。");
       } else if (session.generationStatus?.degraded) {
-        message.warning('辅助分诊建议已生成，但部分内容不完整，请查看页面提示。');
+        message.warning(
+          "辅助分诊建议已生成，但部分内容不完整，请查看页面提示。",
+        );
       } else {
-        message.success('会诊式辅助分诊建议已生成');
+        message.success("会诊式辅助分诊建议已生成");
       }
       navigate(`/diagnosis/${session.id}`);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '生成辅助分诊建议失败');
+      message.error(
+        error instanceof Error ? error.message : "生成辅助分诊建议失败",
+      );
     }
   }
 
   function handleDelete(id: string) {
     setDeletingId(id);
     remove.mutate(id, {
-      onSuccess: () => message.success('辅助分诊记录已删除'),
-      onError: (error) => message.error(error instanceof Error ? error.message : '删除失败，请稍后重试'),
+      onSuccess: () => message.success("辅助分诊记录已删除"),
+      onError: (error) =>
+        message.error(
+          error instanceof Error ? error.message : "删除失败，请稍后重试",
+        ),
       onSettled: () => setDeletingId(null),
     });
   }
@@ -61,7 +85,8 @@ export function DiagnosisPage() {
           <GradientText pauseOnHover>中西医结合辅助分诊</GradientText>
         </Typography.Title>
         <Typography.Paragraph type="secondary">
-          先用一句话描述不适，系统会整理关键信息并提示少量补充问题，再由西医与中医 Agent 初评、质询和仲裁。
+          先用一句话描述不适，系统会整理关键信息并提示少量补充问题，再由西医与中医
+          Agent 初评、质询和仲裁。
         </Typography.Paragraph>
       </div>
       <Alert
@@ -83,11 +108,16 @@ export function DiagnosisPage() {
           </Col>
           <Col xs={24} xl={12}>
             <Card
+              className="diagnosis-history-card"
               title="历史记录"
               extra={
                 <Space size={8}>
                   <span className="soft-card-extra">辅助分诊记录</span>
-                  <Button size="small" icon={<UpOutlined />} onClick={() => setShowHistory(false)}>
+                  <Button
+                    size="small"
+                    icon={<UpOutlined />}
+                    onClick={() => setShowHistory(false)}
+                  >
                     收起
                   </Button>
                 </Space>
@@ -103,9 +133,13 @@ export function DiagnosisPage() {
                     dataSource={history.data ?? []}
                     renderItem={(item) => (
                       <List.Item
-                        className="record-list-item"
+                        className="record-list-item diagnosis-history-item"
                         actions={[
-                          <Button key="view" type="link" onClick={() => navigate(`/diagnosis/${item.id}`)}>
+                          <Button
+                            key="view"
+                            type="link"
+                            onClick={() => navigate(`/diagnosis/${item.id}`)}
+                          >
                             查看
                           </Button>,
                           <Popconfirm
@@ -117,7 +151,11 @@ export function DiagnosisPage() {
                             okButtonProps={{ danger: true }}
                             onConfirm={() => handleDelete(item.id)}
                           >
-                            <Button type="link" danger loading={deletingId === item.id}>
+                            <Button
+                              type="link"
+                              danger
+                              loading={deletingId === item.id}
+                            >
                               删除
                             </Button>
                           </Popconfirm>,
@@ -125,21 +163,44 @@ export function DiagnosisPage() {
                       >
                         <List.Item.Meta
                           title={
-                            <Space wrap>
-                              <Tag color={item.safetyLevel ? safetyColors[item.safetyLevel] : 'default'}>
-                                {item.safetyLevel ? safetyLabels[item.safetyLevel] : item.status}
+                            <Space className="diagnosis-history-meta" wrap>
+                              <Tag
+                                color={
+                                  item.safetyLevel
+                                    ? safetyColors[item.safetyLevel]
+                                    : "default"
+                                }
+                              >
+                                {item.safetyLevel
+                                  ? safetyLabels[item.safetyLevel]
+                                  : item.status}
                               </Tag>
-                              <Typography.Text>{new Date(item.createdAt).toLocaleString()}</Typography.Text>
-                              {item.generationStatus?.degraded ? <Tag color="gold">部分生成</Tag> : null}
+                              <Typography.Text className="diagnosis-history-date">
+                                {new Date(item.createdAt).toLocaleString()}
+                              </Typography.Text>
+                              {item.generationStatus?.degraded ? (
+                                <Tag color="gold">部分生成</Tag>
+                              ) : null}
                             </Space>
                           }
                           description={
-                            <Space direction="vertical" size={4}>
-                              <Typography.Text>{item.integratedOutput?.summary || item.input.chiefComplaint}</Typography.Text>
-                              {item.input.chiefComplaint && item.integratedOutput?.summary ? (
-                                <Typography.Text type="secondary">主诉：{item.input.chiefComplaint}</Typography.Text>
+                            <div className="diagnosis-history-content">
+                              <HistorySummaryPreview
+                                content={
+                                  item.integratedOutput?.summary ||
+                                  item.input.chiefComplaint
+                                }
+                              />
+                              {item.input.chiefComplaint &&
+                              item.integratedOutput?.summary ? (
+                                <Typography.Text
+                                  className="diagnosis-history-complaint"
+                                  type="secondary"
+                                >
+                                  主诉：{item.input.chiefComplaint}
+                                </Typography.Text>
                               ) : null}
-                            </Space>
+                            </div>
                           }
                         />
                       </List.Item>
@@ -152,7 +213,11 @@ export function DiagnosisPage() {
         </Row>
       ) : (
         <div className="diagnosis-collapsed-layout">
-          <Button type="primary" icon={<HistoryOutlined />} onClick={() => setShowHistory(true)}>
+          <Button
+            type="primary"
+            icon={<HistoryOutlined />}
+            onClick={() => setShowHistory(true)}
+          >
             查看历史记录
           </Button>
           <Row gutter={[18, 18]} justify="center">
@@ -168,5 +233,13 @@ export function DiagnosisPage() {
         </div>
       )}
     </>
+  );
+}
+
+function HistorySummaryPreview({ content }: { content: string }) {
+  return (
+    <div className="diagnosis-history-summary">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+    </div>
   );
 }

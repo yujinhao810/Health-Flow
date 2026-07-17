@@ -1,9 +1,19 @@
-import { z } from 'zod';
+import { z } from "zod";
 
-export const diagnosisUrgencySchema = z.enum(['emergency', 'urgent', 'routine', 'self_care']);
+export const diagnosisUrgencySchema = z.enum([
+  "emergency",
+  "urgent",
+  "routine",
+  "self_care",
+]);
 export type DiagnosisUrgency = z.infer<typeof diagnosisUrgencySchema>;
 
-export const diagnosisSafetyLevelSchema = z.enum(['emergency', 'urgent', 'clinician_recommended', 'supportive']);
+export const diagnosisSafetyLevelSchema = z.enum([
+  "emergency",
+  "urgent",
+  "clinician_recommended",
+  "supportive",
+]);
 export type DiagnosisSafetyLevel = z.infer<typeof diagnosisSafetyLevelSchema>;
 
 export const symptomSchema = z.object({
@@ -36,7 +46,7 @@ export const lifestyleSignalsSchema = z.object({
 
 export const medicalContextSchema = z.object({
   age: z.number().int().positive().optional(),
-  sex: z.enum(['female', 'male', 'other', 'unknown']).optional(),
+  sex: z.enum(["female", "male", "other", "unknown"]).optional(),
   isPregnant: z.boolean().optional(),
   chronicConditions: z.array(z.string()).default([]),
   medications: z.array(z.string()).default([]),
@@ -74,6 +84,13 @@ export const diagnosisInputSchema = z.object({
 });
 export type DiagnosisInput = z.infer<typeof diagnosisInputSchema>;
 
+export const diagnosisSupplementInputSchema = z.object({
+  additionalInformation: z.string().trim().min(1).max(3000),
+});
+export type DiagnosisSupplementInput = z.infer<
+  typeof diagnosisSupplementInputSchema
+>;
+
 export const diagnosisFollowUpRequestSchema = z.object({
   chiefComplaint: z.string().min(1).max(1000),
   symptomName: z.string().optional(),
@@ -81,26 +98,39 @@ export const diagnosisFollowUpRequestSchema = z.object({
   severity: z.number().min(1).max(10).optional(),
   duration: z.string().optional(),
   redFlagSigns: z.array(z.string()).default([]),
+  redFlagUncertain: z.boolean().default(false),
   includeRecentHealthContext: z.boolean().default(true),
 });
-export type DiagnosisFollowUpRequest = z.infer<typeof diagnosisFollowUpRequestSchema>;
+export type DiagnosisFollowUpRequest = z.infer<
+  typeof diagnosisFollowUpRequestSchema
+>;
 
 export const diagnosisFollowUpQuestionSchema = z.object({
   id: z.string(),
   question: z.string(),
   reason: z.string(),
-  priority: z.enum(['safety', 'symptom_detail', 'medical_context', 'tcm_observation', 'lifestyle']),
+  priority: z.enum([
+    "safety",
+    "symptom_detail",
+    "medical_context",
+    "tcm_observation",
+    "lifestyle",
+  ]),
   answerHint: z.string(),
+  suggestedAnswers: z.array(z.string()).max(6).optional(),
 });
-export type DiagnosisFollowUpQuestion = z.infer<typeof diagnosisFollowUpQuestionSchema>;
+export type DiagnosisFollowUpQuestion = z.infer<
+  typeof diagnosisFollowUpQuestionSchema
+>;
 
 export const diagnosisFollowUpResultSchema = z.object({
   summary: z.string(),
-  questions: z.array(diagnosisFollowUpQuestionSchema).min(1).max(5),
+  questions: z.array(diagnosisFollowUpQuestionSchema).min(1).max(3),
   missingFields: z.array(z.string()).default([]),
-  source: z.enum(['agent', 'fallback']).optional(),
+  source: z.enum(["agent", "fallback"]).optional(),
   provider: z.string().optional(),
   model: z.string().optional(),
+  warning: z.string().optional(),
   usage: z
     .object({
       inputTokens: z.number().optional(),
@@ -108,7 +138,9 @@ export const diagnosisFollowUpResultSchema = z.object({
     })
     .optional(),
 });
-export type DiagnosisFollowUpResult = z.infer<typeof diagnosisFollowUpResultSchema>;
+export type DiagnosisFollowUpResult = z.infer<
+  typeof diagnosisFollowUpResultSchema
+>;
 
 export const redFlagFindingSchema = z.object({
   category: z.string(),
@@ -121,23 +153,29 @@ export type RedFlagFinding = z.infer<typeof redFlagFindingSchema>;
 export const westernAssessmentSchema = z.object({
   urgency: diagnosisUrgencySchema,
   redFlags: z.array(redFlagFindingSchema).default([]),
-  diagnosticHypotheses: z.array(
-    z.object({
-      name: z.string(),
-      likelihood: z.enum(['low', 'medium', 'high']),
-      rationale: z.string(),
-      supportingFindings: z.array(z.string()).default([]),
-      againstFindings: z.array(z.string()).default([]),
-      notADiagnosis: z.literal(true),
-    }),
-  ).default([]),
-  recommendedChecks: z.array(
-    z.object({
-      name: z.string(),
-      timing: z.enum(['immediate', 'soon', 'routine']),
-      reason: z.string(),
-    }),
-  ).default([]),
+  diagnosticHypotheses: z
+    .array(
+      z.object({
+        name: z.string(),
+        likelihood: z.enum(["low", "medium", "high"]),
+        rationale: z.string(),
+        supportingFindings: z.array(z.string()).default([]),
+        againstFindings: z.array(z.string()).default([]),
+        evidenceIds: z.array(z.string()).optional(),
+        notADiagnosis: z.literal(true),
+      }),
+    )
+    .default([]),
+  recommendedChecks: z
+    .array(
+      z.object({
+        name: z.string(),
+        timing: z.enum(["immediate", "soon", "routine"]),
+        reason: z.string(),
+        evidenceIds: z.array(z.string()).optional(),
+      }),
+    )
+    .default([]),
   selfCareBoundaries: z.array(z.string()).default([]),
   seekCareCriteria: z.array(z.string()).default([]),
   missingInformation: z.array(z.string()).default([]),
@@ -147,30 +185,43 @@ export type WesternAssessment = z.infer<typeof westernAssessmentSchema>;
 export const tcmAssessmentSchema = z.object({
   urgency: diagnosisUrgencySchema,
   redFlags: z.array(redFlagFindingSchema).default([]),
-  patternHypotheses: z.array(
-    z.object({
-      name: z.string(),
-      likelihood: z.enum(['low', 'medium', 'high']),
-      rationale: z.string(),
-      supportingFindings: z.array(z.string()).default([]),
-      notADiagnosis: z.literal(true),
-    }),
-  ).default([]),
+  patternHypotheses: z
+    .array(
+      z.object({
+        name: z.string(),
+        likelihood: z.enum(["low", "medium", "high"]),
+        rationale: z.string(),
+        supportingFindings: z.array(z.string()).default([]),
+        evidenceIds: z.array(z.string()).optional(),
+        notADiagnosis: z.literal(true),
+      }),
+    )
+    .default([]),
   tonguePulseQuestions: z.array(z.string()).default([]),
   constitutionAndPatternRationale: z.string(),
-  regulationSuggestions: z.array(
-    z.object({
-      category: z.enum(['diet', 'routine', 'emotion', 'movement', 'acupressure', 'other']),
-      suggestion: z.string(),
-      safetyNote: z.string().optional(),
-    }),
-  ).default([]),
+  regulationSuggestions: z
+    .array(
+      z.object({
+        category: z.enum([
+          "diet",
+          "routine",
+          "emotion",
+          "movement",
+          "acupressure",
+          "other",
+        ]),
+        suggestion: z.string(),
+        safetyNote: z.string().optional(),
+        evidenceIds: z.array(z.string()).optional(),
+      }),
+    )
+    .default([]),
   contraindications: z.array(z.string()).default([]),
   missingInformation: z.array(z.string()).default([]),
 });
 export type TcmAssessment = z.infer<typeof tcmAssessmentSchema>;
 
-const clinicalPrioritySchema = z.enum(['immediate', 'soon', 'routine']);
+const clinicalPrioritySchema = z.enum(["immediate", "soon", "routine"]);
 
 export const westernReviewOfTcmSchema = z.object({
   referenceable: z
@@ -243,10 +294,22 @@ export type CrossExamination = z.infer<typeof crossExaminationSchema>;
 
 export const integratorDecisionSchema = z.object({
   claim: z.string(),
-  source: z.enum(['consensus', 'western_only', 'tcm_only', 'conflict', 'safety_rule']),
-  decision: z.enum(['adopted', 'partially_adopted', 'not_adopted', 'needs_follow_up']),
+  source: z.enum([
+    "consensus",
+    "western_only",
+    "tcm_only",
+    "conflict",
+    "safety_rule",
+  ]),
+  decision: z.enum([
+    "adopted",
+    "partially_adopted",
+    "not_adopted",
+    "needs_follow_up",
+  ]),
   reason: z.string(),
   safetyImpact: z.string(),
+  evidenceIds: z.array(z.string()).optional(),
 });
 export type IntegratorDecision = z.infer<typeof integratorDecisionSchema>;
 
@@ -254,8 +317,20 @@ export const arbitrationDecisionSchema = z.object({
   topic: z.string(),
   westernView: z.string(),
   tcmView: z.string(),
-  resolution: z.enum(['adopt_western', 'adopt_tcm', 'combine', 'reject_both', 'ask_follow_up']),
-  adoptedFrom: z.enum(['western', 'tcm', 'both', 'neither', 'pending_more_info']),
+  resolution: z.enum([
+    "adopt_western",
+    "adopt_tcm",
+    "combine",
+    "reject_both",
+    "ask_follow_up",
+  ]),
+  adoptedFrom: z.enum([
+    "western",
+    "tcm",
+    "both",
+    "neither",
+    "pending_more_info",
+  ]),
   reason: z.string(),
   safetyPriority: z.boolean(),
 });
@@ -272,34 +347,53 @@ export const integratedDiagnosisResultSchema = z.object({
   decisionMatrix: z.array(integratorDecisionSchema).default([]),
   arbitrationDecisions: z.array(arbitrationDecisionSchema).default([]),
   needsFollowUp: z.boolean().default(false),
-  followUpReason: z.string().default(''),
+  followUpReason: z.string().default(""),
   requiredFollowUpQuestions: z.array(z.string()).default([]),
-  integrativeRecommendations: z.array(
-    z.object({
-      category: z.enum(['medical_care', 'monitoring', 'lifestyle', 'tcm_regulation', 'avoidance']),
-      title: z.string(),
-      details: z.string(),
-      priority: z.enum(['immediate', 'soon', 'routine']),
-    }),
-  ).default([]),
+  integrativeRecommendations: z
+    .array(
+      z.object({
+        category: z.enum([
+          "medical_care",
+          "monitoring",
+          "lifestyle",
+          "tcm_regulation",
+          "avoidance",
+        ]),
+        title: z.string(),
+        details: z.string(),
+        priority: z.enum(["immediate", "soon", "routine"]),
+        evidenceIds: z.array(z.string()).optional(),
+      }),
+    )
+    .default([]),
   followUpQuestions: z.array(z.string()).default([]),
-  redFlagCoverage: z.array(
-    z.object({
-      category: z.string(),
-      checked: z.boolean(),
-      positive: z.boolean(),
-      note: z.string(),
-    }),
-  ).default([]),
+  redFlagCoverage: z
+    .array(
+      z.object({
+        category: z.string(),
+        checked: z.boolean(),
+        positive: z.boolean(),
+        note: z.string(),
+      }),
+    )
+    .default([]),
   disclaimer: z.string(),
 });
-export type IntegratedDiagnosisResult = z.infer<typeof integratedDiagnosisResultSchema>;
+export type IntegratedDiagnosisResult = z.infer<
+  typeof integratedDiagnosisResultSchema
+>;
 
-export const generationStepStatusSchema = z.enum(['complete', 'fallback']);
+export const generationStepStatusSchema = z.enum(["complete", "fallback"]);
 export type GenerationStepStatus = z.infer<typeof generationStepStatusSchema>;
 
-export const generationOverallStatusSchema = z.enum(['complete', 'partial', 'fallback']);
-export type GenerationOverallStatus = z.infer<typeof generationOverallStatusSchema>;
+export const generationOverallStatusSchema = z.enum([
+  "complete",
+  "partial",
+  "fallback",
+]);
+export type GenerationOverallStatus = z.infer<
+  typeof generationOverallStatusSchema
+>;
 
 export const generationStatusSchema = z.object({
   overall: generationOverallStatusSchema,
@@ -310,6 +404,15 @@ export const generationStatusSchema = z.object({
   integrated: generationStepStatusSchema,
   degraded: z.boolean(),
   warnings: z.array(z.string()).default([]),
+  pipelineVersion: z.string().optional(),
+  roleModels: z
+    .object({
+      western: z.string(),
+      tcm: z.string(),
+      reviewer: z.string(),
+      integrator: z.string(),
+    })
+    .optional(),
   coordinator: z
     .object({
       strategy: z.string(),
@@ -327,7 +430,13 @@ export const generationStatusSchema = z.object({
       steps: z.array(
         z.object({
           name: z.string(),
-          status: z.enum(['pending', 'running', 'complete', 'fallback', 'skipped']),
+          status: z.enum([
+            "pending",
+            "running",
+            "complete",
+            "fallback",
+            "skipped",
+          ]),
           startedAt: z.string().optional(),
           endedAt: z.string().optional(),
           note: z.string().optional(),
@@ -342,7 +451,13 @@ export type GenerationStatus = z.infer<typeof generationStatusSchema>;
 
 export const diagnosisSessionSchema = z.object({
   id: z.string(),
-  status: z.enum(['pending', 'completed', 'safety_blocked', 'failed']),
+  status: z.enum([
+    "pending",
+    "completed",
+    "degraded",
+    "safety_blocked",
+    "failed",
+  ]),
   safetyLevel: diagnosisSafetyLevelSchema.optional().nullable(),
   input: diagnosisInputSchema,
   contextSnapshot: z.unknown().optional().nullable(),
@@ -359,335 +474,447 @@ export const diagnosisSessionSchema = z.object({
 export type DiagnosisSession = z.infer<typeof diagnosisSessionSchema>;
 
 export const commonRedFlagJsonSchema = {
-  type: 'object',
+  type: "object",
   additionalProperties: false,
   properties: {
-    category: { type: 'string' },
-    reason: { type: 'string' },
-    matchedEvidence: { type: 'array', items: { type: 'string' } },
-    urgency: { type: 'string', enum: ['emergency', 'urgent', 'routine', 'self_care'] },
+    category: { type: "string" },
+    reason: { type: "string" },
+    matchedEvidence: { type: "array", items: { type: "string" } },
+    urgency: {
+      type: "string",
+      enum: ["emergency", "urgent", "routine", "self_care"],
+    },
   },
-  required: ['category', 'reason', 'matchedEvidence', 'urgency'],
+  required: ["category", "reason", "matchedEvidence", "urgency"],
 } as const;
 
 export const diagnosisFollowUpResultJsonSchema = {
-  type: 'object',
+  type: "object",
   additionalProperties: false,
   properties: {
-    summary: { type: 'string' },
+    summary: { type: "string" },
     questions: {
-      type: 'array',
+      type: "array",
       minItems: 1,
-      maxItems: 5,
+      maxItems: 3,
       items: {
-        type: 'object',
+        type: "object",
         additionalProperties: false,
         properties: {
-          id: { type: 'string' },
-          question: { type: 'string' },
-          reason: { type: 'string' },
-          priority: { type: 'string', enum: ['safety', 'symptom_detail', 'medical_context', 'tcm_observation', 'lifestyle'] },
-          answerHint: { type: 'string' },
+          id: { type: "string" },
+          question: { type: "string" },
+          reason: { type: "string" },
+          priority: {
+            type: "string",
+            enum: [
+              "safety",
+              "symptom_detail",
+              "medical_context",
+              "tcm_observation",
+              "lifestyle",
+            ],
+          },
+          answerHint: { type: "string" },
+          suggestedAnswers: {
+            type: "array",
+            minItems: 2,
+            maxItems: 6,
+            items: { type: "string" },
+          },
         },
-        required: ['id', 'question', 'reason', 'priority', 'answerHint'],
+        required: [
+          "id",
+          "question",
+          "reason",
+          "priority",
+          "answerHint",
+          "suggestedAnswers",
+        ],
       },
     },
-    missingFields: { type: 'array', items: { type: 'string' } },
+    missingFields: { type: "array", items: { type: "string" } },
   },
-  required: ['summary', 'questions', 'missingFields'],
+  required: ["summary", "questions", "missingFields"],
 } as const;
 
 export const westernAssessmentJsonSchema = {
-  type: 'object',
+  type: "object",
   additionalProperties: false,
   properties: {
-    urgency: { type: 'string', enum: ['emergency', 'urgent', 'routine', 'self_care'] },
-    redFlags: { type: 'array', items: commonRedFlagJsonSchema },
+    urgency: {
+      type: "string",
+      enum: ["emergency", "urgent", "routine", "self_care"],
+    },
+    redFlags: { type: "array", items: commonRedFlagJsonSchema },
     diagnosticHypotheses: {
-      type: 'array',
+      type: "array",
       items: {
-        type: 'object',
+        type: "object",
         additionalProperties: false,
         properties: {
-          name: { type: 'string' },
-          likelihood: { type: 'string', enum: ['low', 'medium', 'high'] },
-          rationale: { type: 'string' },
-          supportingFindings: { type: 'array', items: { type: 'string' } },
-          againstFindings: { type: 'array', items: { type: 'string' } },
+          name: { type: "string" },
+          likelihood: { type: "string", enum: ["low", "medium", "high"] },
+          rationale: { type: "string" },
+          supportingFindings: { type: "array", items: { type: "string" } },
+          againstFindings: { type: "array", items: { type: "string" } },
+          evidenceIds: { type: "array", items: { type: "string" } },
           notADiagnosis: { const: true },
         },
-        required: ['name', 'likelihood', 'rationale', 'supportingFindings', 'againstFindings', 'notADiagnosis'],
+        required: [
+          "name",
+          "likelihood",
+          "rationale",
+          "supportingFindings",
+          "againstFindings",
+          "notADiagnosis",
+        ],
       },
     },
     recommendedChecks: {
-      type: 'array',
+      type: "array",
       items: {
-        type: 'object',
+        type: "object",
         additionalProperties: false,
         properties: {
-          name: { type: 'string' },
-          timing: { type: 'string', enum: ['immediate', 'soon', 'routine'] },
-          reason: { type: 'string' },
+          name: { type: "string" },
+          timing: { type: "string", enum: ["immediate", "soon", "routine"] },
+          reason: { type: "string" },
+          evidenceIds: { type: "array", items: { type: "string" } },
         },
-        required: ['name', 'timing', 'reason'],
+        required: ["name", "timing", "reason"],
       },
     },
-    selfCareBoundaries: { type: 'array', items: { type: 'string' } },
-    seekCareCriteria: { type: 'array', items: { type: 'string' } },
-    missingInformation: { type: 'array', items: { type: 'string' } },
+    selfCareBoundaries: { type: "array", items: { type: "string" } },
+    seekCareCriteria: { type: "array", items: { type: "string" } },
+    missingInformation: { type: "array", items: { type: "string" } },
   },
   required: [
-    'urgency',
-    'redFlags',
-    'diagnosticHypotheses',
-    'recommendedChecks',
-    'selfCareBoundaries',
-    'seekCareCriteria',
-    'missingInformation',
+    "urgency",
+    "redFlags",
+    "diagnosticHypotheses",
+    "recommendedChecks",
+    "selfCareBoundaries",
+    "seekCareCriteria",
+    "missingInformation",
   ],
 } as const;
 
 export const tcmAssessmentJsonSchema = {
-  type: 'object',
+  type: "object",
   additionalProperties: false,
   properties: {
-    urgency: { type: 'string', enum: ['emergency', 'urgent', 'routine', 'self_care'] },
-    redFlags: { type: 'array', items: commonRedFlagJsonSchema },
+    urgency: {
+      type: "string",
+      enum: ["emergency", "urgent", "routine", "self_care"],
+    },
+    redFlags: { type: "array", items: commonRedFlagJsonSchema },
     patternHypotheses: {
-      type: 'array',
+      type: "array",
       items: {
-        type: 'object',
+        type: "object",
         additionalProperties: false,
         properties: {
-          name: { type: 'string' },
-          likelihood: { type: 'string', enum: ['low', 'medium', 'high'] },
-          rationale: { type: 'string' },
-          supportingFindings: { type: 'array', items: { type: 'string' } },
+          name: { type: "string" },
+          likelihood: { type: "string", enum: ["low", "medium", "high"] },
+          rationale: { type: "string" },
+          supportingFindings: { type: "array", items: { type: "string" } },
+          evidenceIds: { type: "array", items: { type: "string" } },
           notADiagnosis: { const: true },
         },
-        required: ['name', 'likelihood', 'rationale', 'supportingFindings', 'notADiagnosis'],
+        required: [
+          "name",
+          "likelihood",
+          "rationale",
+          "supportingFindings",
+          "notADiagnosis",
+        ],
       },
     },
-    tonguePulseQuestions: { type: 'array', items: { type: 'string' } },
-    constitutionAndPatternRationale: { type: 'string' },
+    tonguePulseQuestions: { type: "array", items: { type: "string" } },
+    constitutionAndPatternRationale: { type: "string" },
     regulationSuggestions: {
-      type: 'array',
+      type: "array",
       items: {
-        type: 'object',
+        type: "object",
         additionalProperties: false,
         properties: {
-          category: { type: 'string', enum: ['diet', 'routine', 'emotion', 'movement', 'acupressure', 'other'] },
-          suggestion: { type: 'string' },
-          safetyNote: { type: 'string' },
+          category: {
+            type: "string",
+            enum: [
+              "diet",
+              "routine",
+              "emotion",
+              "movement",
+              "acupressure",
+              "other",
+            ],
+          },
+          suggestion: { type: "string" },
+          safetyNote: { type: "string" },
+          evidenceIds: { type: "array", items: { type: "string" } },
         },
-        required: ['category', 'suggestion'],
+        required: ["category", "suggestion"],
       },
     },
-    contraindications: { type: 'array', items: { type: 'string' } },
-    missingInformation: { type: 'array', items: { type: 'string' } },
+    contraindications: { type: "array", items: { type: "string" } },
+    missingInformation: { type: "array", items: { type: "string" } },
   },
   required: [
-    'urgency',
-    'redFlags',
-    'patternHypotheses',
-    'tonguePulseQuestions',
-    'constitutionAndPatternRationale',
-    'regulationSuggestions',
-    'contraindications',
-    'missingInformation',
+    "urgency",
+    "redFlags",
+    "patternHypotheses",
+    "tonguePulseQuestions",
+    "constitutionAndPatternRationale",
+    "regulationSuggestions",
+    "contraindications",
+    "missingInformation",
   ],
 } as const;
 
-const clinicalPriorityJsonSchema = { type: 'string', enum: ['immediate', 'soon', 'routine'] } as const;
+const clinicalPriorityJsonSchema = {
+  type: "string",
+  enum: ["immediate", "soon", "routine"],
+} as const;
 
 export const westernReviewOfTcmJsonSchema = {
-  type: 'object',
+  type: "object",
   additionalProperties: false,
   properties: {
     referenceable: {
-      type: 'array',
+      type: "array",
       items: {
-        type: 'object',
+        type: "object",
         additionalProperties: false,
         properties: {
-          point: { type: 'string' },
-          reason: { type: 'string' },
+          point: { type: "string" },
+          reason: { type: "string" },
         },
-        required: ['point', 'reason'],
+        required: ["point", "reason"],
       },
     },
     potentiallyMisleading: {
-      type: 'array',
+      type: "array",
       items: {
-        type: 'object',
+        type: "object",
         additionalProperties: false,
         properties: {
-          point: { type: 'string' },
-          risk: { type: 'string' },
-          saferFraming: { type: 'string' },
+          point: { type: "string" },
+          risk: { type: "string" },
+          saferFraming: { type: "string" },
         },
-        required: ['point', 'risk', 'saferFraming'],
+        required: ["point", "risk", "saferFraming"],
       },
     },
     checksNeeded: {
-      type: 'array',
+      type: "array",
       items: {
-        type: 'object',
+        type: "object",
         additionalProperties: false,
         properties: {
-          issue: { type: 'string' },
-          recommendedCheck: { type: 'string' },
+          issue: { type: "string" },
+          recommendedCheck: { type: "string" },
           timing: clinicalPriorityJsonSchema,
-          reason: { type: 'string' },
+          reason: { type: "string" },
         },
-        required: ['issue', 'recommendedCheck', 'timing', 'reason'],
+        required: ["issue", "recommendedCheck", "timing", "reason"],
       },
     },
   },
-  required: ['referenceable', 'potentiallyMisleading', 'checksNeeded'],
+  required: ["referenceable", "potentiallyMisleading", "checksNeeded"],
 } as const;
 
 export const tcmReviewOfWesternJsonSchema = {
-  type: 'object',
+  type: "object",
   additionalProperties: false,
   properties: {
     needsMoreTcmInfo: {
-      type: 'array',
+      type: "array",
       items: {
-        type: 'object',
+        type: "object",
         additionalProperties: false,
         properties: {
-          patternOrIssue: { type: 'string' },
-          missingInfo: { type: 'array', items: { type: 'string' } },
-          reason: { type: 'string' },
+          patternOrIssue: { type: "string" },
+          missingInfo: { type: "array", items: { type: "string" } },
+          reason: { type: "string" },
         },
-        required: ['patternOrIssue', 'missingInfo', 'reason'],
+        required: ["patternOrIssue", "missingInfo", "reason"],
       },
     },
     safetyBoundaries: {
-      type: 'array',
+      type: "array",
       items: {
-        type: 'object',
+        type: "object",
         additionalProperties: false,
         properties: {
-          westernRedFlagOrConcern: { type: 'string' },
-          tcmAdjustment: { type: 'string' },
-          reason: { type: 'string' },
+          westernRedFlagOrConcern: { type: "string" },
+          tcmAdjustment: { type: "string" },
+          reason: { type: "string" },
         },
-        required: ['westernRedFlagOrConcern', 'tcmAdjustment', 'reason'],
+        required: ["westernRedFlagOrConcern", "tcmAdjustment", "reason"],
       },
     },
     conflicts: {
-      type: 'array',
+      type: "array",
       items: {
-        type: 'object',
+        type: "object",
         additionalProperties: false,
         properties: {
-          topic: { type: 'string' },
-          westernView: { type: 'string' },
-          tcmView: { type: 'string' },
-          concern: { type: 'string' },
+          topic: { type: "string" },
+          westernView: { type: "string" },
+          tcmView: { type: "string" },
+          concern: { type: "string" },
         },
-        required: ['topic', 'westernView', 'tcmView', 'concern'],
+        required: ["topic", "westernView", "tcmView", "concern"],
       },
     },
   },
-  required: ['needsMoreTcmInfo', 'safetyBoundaries', 'conflicts'],
+  required: ["needsMoreTcmInfo", "safetyBoundaries", "conflicts"],
 } as const;
 
 export const integratedDiagnosisResultJsonSchema = {
-  type: 'object',
+  type: "object",
   additionalProperties: false,
   properties: {
-    safetyLevel: { type: 'string', enum: ['emergency', 'urgent', 'clinician_recommended', 'supportive'] },
-    mustSeekImmediateCare: { type: 'boolean' },
-    immediateCareReasons: { type: 'array', items: { type: 'string' } },
-    summary: { type: 'string' },
-    westernPerspective: { type: 'string' },
-    tcmPerspective: { type: 'string' },
-    conflictResolution: { type: 'array', items: { type: 'string' } },
+    safetyLevel: {
+      type: "string",
+      enum: ["emergency", "urgent", "clinician_recommended", "supportive"],
+    },
+    mustSeekImmediateCare: { type: "boolean" },
+    immediateCareReasons: { type: "array", items: { type: "string" } },
+    summary: { type: "string" },
+    westernPerspective: { type: "string" },
+    tcmPerspective: { type: "string" },
+    conflictResolution: { type: "array", items: { type: "string" } },
     decisionMatrix: {
-      type: 'array',
+      type: "array",
       items: {
-        type: 'object',
+        type: "object",
         additionalProperties: false,
         properties: {
-          claim: { type: 'string' },
-          source: { type: 'string', enum: ['consensus', 'western_only', 'tcm_only', 'conflict', 'safety_rule'] },
-          decision: { type: 'string', enum: ['adopted', 'partially_adopted', 'not_adopted', 'needs_follow_up'] },
-          reason: { type: 'string' },
-          safetyImpact: { type: 'string' },
+          claim: { type: "string" },
+          source: {
+            type: "string",
+            enum: [
+              "consensus",
+              "western_only",
+              "tcm_only",
+              "conflict",
+              "safety_rule",
+            ],
+          },
+          decision: {
+            type: "string",
+            enum: [
+              "adopted",
+              "partially_adopted",
+              "not_adopted",
+              "needs_follow_up",
+            ],
+          },
+          reason: { type: "string" },
+          safetyImpact: { type: "string" },
+          evidenceIds: { type: "array", items: { type: "string" } },
         },
-        required: ['claim', 'source', 'decision', 'reason', 'safetyImpact'],
+        required: ["claim", "source", "decision", "reason", "safetyImpact"],
       },
     },
     arbitrationDecisions: {
-      type: 'array',
+      type: "array",
       items: {
-        type: 'object',
+        type: "object",
         additionalProperties: false,
         properties: {
-          topic: { type: 'string' },
-          westernView: { type: 'string' },
-          tcmView: { type: 'string' },
-          resolution: { type: 'string', enum: ['adopt_western', 'adopt_tcm', 'combine', 'reject_both', 'ask_follow_up'] },
-          adoptedFrom: { type: 'string', enum: ['western', 'tcm', 'both', 'neither', 'pending_more_info'] },
-          reason: { type: 'string' },
-          safetyPriority: { type: 'boolean' },
+          topic: { type: "string" },
+          westernView: { type: "string" },
+          tcmView: { type: "string" },
+          resolution: {
+            type: "string",
+            enum: [
+              "adopt_western",
+              "adopt_tcm",
+              "combine",
+              "reject_both",
+              "ask_follow_up",
+            ],
+          },
+          adoptedFrom: {
+            type: "string",
+            enum: ["western", "tcm", "both", "neither", "pending_more_info"],
+          },
+          reason: { type: "string" },
+          safetyPriority: { type: "boolean" },
         },
-        required: ['topic', 'westernView', 'tcmView', 'resolution', 'adoptedFrom', 'reason', 'safetyPriority'],
+        required: [
+          "topic",
+          "westernView",
+          "tcmView",
+          "resolution",
+          "adoptedFrom",
+          "reason",
+          "safetyPriority",
+        ],
       },
     },
-    needsFollowUp: { type: 'boolean' },
-    followUpReason: { type: 'string' },
-    requiredFollowUpQuestions: { type: 'array', items: { type: 'string' } },
+    needsFollowUp: { type: "boolean" },
+    followUpReason: { type: "string" },
+    requiredFollowUpQuestions: { type: "array", items: { type: "string" } },
     integrativeRecommendations: {
-      type: 'array',
+      type: "array",
       items: {
-        type: 'object',
+        type: "object",
         additionalProperties: false,
         properties: {
-          category: { type: 'string', enum: ['medical_care', 'monitoring', 'lifestyle', 'tcm_regulation', 'avoidance'] },
-          title: { type: 'string' },
-          details: { type: 'string' },
-          priority: { type: 'string', enum: ['immediate', 'soon', 'routine'] },
+          category: {
+            type: "string",
+            enum: [
+              "medical_care",
+              "monitoring",
+              "lifestyle",
+              "tcm_regulation",
+              "avoidance",
+            ],
+          },
+          title: { type: "string" },
+          details: { type: "string" },
+          priority: { type: "string", enum: ["immediate", "soon", "routine"] },
+          evidenceIds: { type: "array", items: { type: "string" } },
         },
-        required: ['category', 'title', 'details', 'priority'],
+        required: ["category", "title", "details", "priority"],
       },
     },
-    followUpQuestions: { type: 'array', items: { type: 'string' } },
+    followUpQuestions: { type: "array", items: { type: "string" } },
     redFlagCoverage: {
-      type: 'array',
+      type: "array",
       items: {
-        type: 'object',
+        type: "object",
         additionalProperties: false,
         properties: {
-          category: { type: 'string' },
-          checked: { type: 'boolean' },
-          positive: { type: 'boolean' },
-          note: { type: 'string' },
+          category: { type: "string" },
+          checked: { type: "boolean" },
+          positive: { type: "boolean" },
+          note: { type: "string" },
         },
-        required: ['category', 'checked', 'positive', 'note'],
+        required: ["category", "checked", "positive", "note"],
       },
     },
-    disclaimer: { type: 'string' },
+    disclaimer: { type: "string" },
   },
   required: [
-    'safetyLevel',
-    'mustSeekImmediateCare',
-    'immediateCareReasons',
-    'summary',
-    'westernPerspective',
-    'tcmPerspective',
-    'conflictResolution',
-    'decisionMatrix',
-    'arbitrationDecisions',
-    'needsFollowUp',
-    'followUpReason',
-    'requiredFollowUpQuestions',
-    'integrativeRecommendations',
-    'followUpQuestions',
-    'redFlagCoverage',
-    'disclaimer',
+    "safetyLevel",
+    "mustSeekImmediateCare",
+    "immediateCareReasons",
+    "summary",
+    "westernPerspective",
+    "tcmPerspective",
+    "conflictResolution",
+    "decisionMatrix",
+    "arbitrationDecisions",
+    "needsFollowUp",
+    "followUpReason",
+    "requiredFollowUpQuestions",
+    "integrativeRecommendations",
+    "followUpQuestions",
+    "redFlagCoverage",
+    "disclaimer",
   ],
 } as const;

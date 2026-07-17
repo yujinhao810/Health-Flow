@@ -1,21 +1,56 @@
-import { LLM_PROVIDER_IDS } from '@health/shared';
-import { z } from 'zod';
+import { LLM_PROVIDER_IDS } from "@health/shared";
+import { z } from "zod";
 
 export const envSchema = z.object({
   API_PORT: z.coerce.number().default(3001),
   DATABASE_URL: z.string().min(1),
-  REDIS_URL: z.string().default('redis://localhost:6379'),
-  CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  REDIS_URL: z.string().default("redis://localhost:6379"),
+  CORS_ORIGIN: z.string().default("http://localhost:5173"),
   JWT_SECRET: z.string().min(8).optional(),
-  JWT_ACCESS_TTL: z.string().default('30d'),
+  JWT_ACCESS_TTL: z.string().default("30d"),
   ENCRYPTION_KEY: z.string().min(16).optional(),
-  LLM_PROVIDER: z.enum(LLM_PROVIDER_IDS).default('mock'),
+  LLM_PROVIDER: z.enum(LLM_PROVIDER_IDS).default("mock"),
   LLM_MODEL: z.string().optional(),
   LLM_VISION_ENABLED: z.string().optional(),
   LLM_BASE_URL: z.string().optional(),
+  LLM_HTTP_PROXY: z.string().url().optional(),
   EMBEDDING_MODEL: z.string().optional(),
   EMBEDDING_BASE_URL: z.string().optional(),
   EMBEDDING_API_KEY: z.string().optional(),
+  RAG_RERANK_ENABLED: z.enum(["true", "false"]).default("true"),
+  RAG_RERANK_PROVIDER: z.literal("dashscope").default("dashscope"),
+  RAG_RERANK_MODEL: z.string().default("gte-rerank-v2"),
+  RAG_RERANK_BASE_URL: z
+    .string()
+    .url()
+    .default(
+      "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
+    ),
+  RAG_RERANK_API_KEY: z.string().optional(),
+  RAG_RERANK_CANDIDATE_K: z.coerce.number().int().min(2).max(50).default(20),
+  RAG_RERANK_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(500)
+    .max(30_000)
+    .default(5_000),
+  RAG_RERANK_MIN_SCORE: z.coerce.number().min(0).max(1).default(0),
+  RAG_PUBLIC_RERANK_MIN_SCORE: z.coerce
+    .number()
+    .min(0)
+    .max(1)
+    .default(0.15),
+  DOCUMENT_PARSER_URL: z.string().url().default("http://127.0.0.1:8090"),
+  DOCUMENT_PARSER_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(180_000),
+  DOCUMENT_PARSER_MIN_QUALITY: z.coerce.number().min(0).max(1).default(0.55),
+  DOCUMENT_PARSER_ALLOW_TEXT_FALLBACK: z
+    .enum(["true", "false"])
+    .default("true"),
+  DOCUMENT_PARSER_ALLOW_PDF_FALLBACK: z.enum(["true", "false"]).default("true"),
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_BASE_URL: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
@@ -48,11 +83,15 @@ export const envSchema = z.object({
   VOLCENGINE_API_KEY: z.string().optional(),
   VOLCENGINE_BASE_URL: z.string().optional(),
   UPLOAD_DIR: z.string().optional(),
-  MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
+  MAX_UPLOAD_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(10 * 1024 * 1024),
   ALLOWED_UPLOAD_MIME_TYPES: z
     .string()
     .default(
-      'image/png,image/jpeg,image/webp,image/gif,image/bmp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,text/plain,text/markdown,application/json,text/csv',
+      "image/png,image/jpeg,image/webp,image/gif,image/bmp,image/tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,application/json,text/csv",
     ),
 });
 

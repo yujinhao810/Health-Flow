@@ -18,10 +18,10 @@ HealthFlow 是一个面向个人健康记录、心理对话和辅助分诊的全
 - 健康记录：睡眠、运动、心情、就医记录的创建、列表和删除
 - 健康总览：今日心情、睡眠趋势、运动频率、主动洞察、最近 Agent 运行记录
 - 心理对话：多轮会话、SSE 流式回复、会话历史、附件上传、引用展示
-- 知识库增强 RAG：内置健康安全知识库，支持用户上传文档作为个人知识源
+- 知识库增强 RAG：内置健康安全知识库和个人知识源分路召回，支持混合检索、RRF 融合、DashScope `gte-rerank-v2` 重排、证据 ID 与连续追问改写
 - 图片理解：可在模型设置中开启，将本轮上传图片发送给支持视觉能力的上游模型
-- 辅助分诊：红旗风险识别、西医视角、中医视角和整合建议，支持历史记录查看
-- 模型设置：Provider、模型、API Key、Base URL、RAG 开关、引用数量和视觉开关
+- 辅助分诊：分层红旗识别、西医/中医初评、交叉审查和安全仲裁，支持在原会话补充信息后重新会诊
+- 模型设置：Provider、主模型、可选的分诊角色模型、API Key、Base URL、RAG 开关、引用数量和视觉开关
 - 安全边界：危机策略、健康免责声明、API Key 后端保存与加密/脱敏显示
 
 ## 目录结构
@@ -157,6 +157,19 @@ RAG 和图片理解相关配置：
 - `ragTopK`：每轮最多引用条数，范围 1-10
 - `visionEnabled` / `LLM_VISION_ENABLED`：是否允许把上传图片发送给上游模型
 - `EMBEDDING_MODEL`、`EMBEDDING_BASE_URL`、`EMBEDDING_API_KEY`：可单独指定用户文档向量化使用的 Embedding 配置；不填时复用当前模型供应商
+- `RAG_RERANK_ENABLED`：是否启用 Rerank，默认开启；失败或超时时自动回退到 RRF
+- `RAG_RERANK_MODEL`：DashScope Rerank 模型，默认 `gte-rerank-v2`
+- `RAG_RERANK_API_KEY`：可选；Qwen 提供商默认复用当前保存的 DashScope API Key
+- `RAG_RERANK_CANDIDATE_K`：送入 Rerank 的候选片段数，默认 20，最终仍受每轮 TopK 限制
+- `RAG_RERANK_TIMEOUT_MS`、`RAG_RERANK_MIN_SCORE`：Rerank 超时和最低相关性分数
+- `RAG_PUBLIC_RERANK_MIN_SCORE`：公共知识库无答案门控阈值，标准集校准默认值为 0.15；低于阈值的公共片段不会进入回答上下文
+- 对话中上传的个人知识文档按会话隔离：同一会话可连续追问，新会话不会检索旧会话文件；删除会话时会清理不再被其他消息引用的文件和向量数据
+- `DOCUMENT_PARSER_URL`：Docling + PaddleOCR 解析服务地址，默认 `http://127.0.0.1:8090`
+- `DOCUMENT_PARSER_TIMEOUT_MS`：单个文件解析超时，默认 180 秒
+- `DOCUMENT_PARSER_MIN_QUALITY`：知识文件最低解析质量，默认 0.55
+- `DOCUMENT_PARSER_ALLOW_TEXT_FALLBACK`：解析服务不可用时是否允许纯文本文件使用 Node 本地回退
+- `DOCUMENT_PARSER_ALLOW_PDF_FALLBACK`：解析服务不可用时是否允许文本型 PDF 使用 PDF.js 读取原生文本层（扫描件仍需 OCR）
+- `LLM_HTTP_PROXY`：可选的模型 API HTTP/HTTPS 代理，例如本机 Clash 的 `http://127.0.0.1:7897`
 
 不要把真实 API Key 提交到代码仓库。
 
@@ -164,19 +177,31 @@ RAG 和图片理解相关配置：
 
 默认允许上传：
 
-- 图片：PNG、JPEG、WebP、GIF、BMP
-- 文档：PDF、DOCX、DOC、TXT、Markdown、JSON、CSV
+- 图片：PNG、JPEG、WebP、GIF、BMP、TIFF
+- 文档：PDF、DOCX、XLSX、PPTX、TXT、Markdown、JSON、CSV
 
-上传文件会保存在 API 侧存储目录中。文本类、PDF 和 DOCX 会尝试抽取文本；作为知识源上传的文档会切分为 chunks，并在对话时参与个人 RAG 检索。
+上传前会根据 Magic Bytes 和 OOXML 内部标记确认真实文件类型。Docling 负责原生 PDF 和 Office 文档结构解析，PaddleOCR 负责图片和扫描 PDF；解析结果经过文本覆盖率、乱码率、OCR 置信度、页面覆盖率和结构完整性门控后，按标题、页面和表格语义切块并参与个人 RAG 检索。图片仍作为聊天附件，但会额外尝试 OCR，以便视觉模型关闭时也能使用可识别文字。
+
+解析服务由 Docker Compose 启动：
+
+```bash
+corepack pnpm infra:up
+curl http://localhost:8090/health
+```
+
+首次 OCR 会下载 PaddleOCR 模型，启动和首个请求耗时会明显长于后续请求。模型缓存在 Docker volume 中。
 
 ## 常用命令
 
 ```bash
 corepack pnpm lint        # TypeScript 检查
 corepack pnpm build       # 构建 shared、api、web
-corepack pnpm test        # 当前为占位测试脚本
+corepack pnpm test        # 共享类型检查、前端检查和 API 回归测试
+corepack pnpm --filter api run eval:rag   # 运行 72 题标准集，评测 RRF 的 Recall、Precision、MRR、nDCG 和拒答准确率
+corepack pnpm --filter api exec tsx scripts/evaluate-rag.ts --use-saved-config  # 使用已保存的 DashScope Key 增加真实 Rerank 对照
+corepack pnpm --filter api run smoke:api  # 对运行中的 API 做认证/设置/分诊闭环烟测
 corepack pnpm dev:worker  # 单独启动后台 worker
-corepack pnpm infra:down  # 停止本地 PostgreSQL / Redis
+corepack pnpm infra:down  # 停止本地 PostgreSQL / Redis / 文档解析服务
 ```
 
 数据库相关：
@@ -205,4 +230,4 @@ Windows 下仓库根目录还提供了 `start-api-3001.cmd` 和 `start-web-5173.
 - API Key/KMS、上传文件隔离、审计日志和数据删除/导出流程
 - 医疗/心理安全审查、风险分级策略、危机干预流程
 - Worker 部署、任务重试、日志监控、告警和备份恢复
-- 自动化测试、端到端测试和迁移发布流程
+- 扩充由临床专业人员审阅的安全评测集、对抗样本和真实模型对照实验

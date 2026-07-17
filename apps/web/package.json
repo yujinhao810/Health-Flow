@@ -8,7 +8,7 @@
     "build": "tsc -b && node scripts/build.mjs",
     "preview": "node scripts/serve-dist.mjs",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "echo \"No tests yet\""
+    "test": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@ant-design/icons": "^5.4.0",

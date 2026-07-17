@@ -142,7 +142,7 @@ export class AnthropicProvider implements LlmProvider {
     const response = await client.messages.create(
       {
         model,
-        max_tokens: 16000,
+        max_tokens: request.maxOutputTokens ?? 16000,
         system: request.system,
         ...(usesAlwaysOnThinking(model) ? {} : { thinking: { type: 'adaptive' as const } }),
         output_config: {

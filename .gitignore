@@ -7,6 +7,10 @@ node_modules
 coverage
 run-logs
 .DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
 pnpm-lock.yaml
 apps/**/dist
 apps/**/.turbo
