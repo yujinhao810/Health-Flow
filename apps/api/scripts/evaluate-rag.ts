@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import type { RagCitation } from "@health/shared";
 import type { AuthUser } from "../src/auth/auth.types";
@@ -18,11 +18,12 @@ import { PrismaService } from "../src/prisma/prisma.service";
 import { SettingsService } from "../src/settings/settings.service";
 
 const TOP_K = 5;
+const datasetFileName = resolveDatasetFileName(process.argv.slice(2));
 const DATASET_PATH = join(
   __dirname,
   "..",
   "evaluation",
-  "rag-standard-v1.json",
+  datasetFileName,
 );
 
 type Relevance = 1 | 2 | 3;
@@ -92,6 +93,7 @@ type Metrics = {
 
 async function main() {
   const benchmark = loadBenchmark();
+  console.log(`评测集：${datasetFileName}`);
   await ConfigModule.forRoot({
     validate: (environment) => envSchema.parse(environment),
   });
@@ -145,6 +147,19 @@ async function main() {
   } finally {
     await prisma.$disconnect();
   }
+}
+
+function resolveDatasetFileName(args: string[]) {
+  const inline = args.find((argument) => argument.startsWith("--dataset="));
+  const flagIndex = args.indexOf("--dataset");
+  const requested = inline?.slice("--dataset=".length) ||
+    (flagIndex >= 0 ? args[flagIndex + 1] : undefined) ||
+    "rag-standard-v1.json";
+  const safeName = basename(requested);
+  if (safeName !== requested || !/^rag-standard-v\d+\.json$/.test(safeName)) {
+    throw new Error(`无效评测集文件名：${requested}`);
+  }
+  return safeName;
 }
 
 function loadBenchmark() {
@@ -246,7 +261,7 @@ async function evaluate(
     });
     rows.push({
       item,
-      citations: result.citations,
+      citations: deduplicateDocumentCitations(result.citations),
       durationMs: Date.now() - startedAt,
       rerank: result.trace.rerank,
     });
@@ -256,6 +271,16 @@ async function evaluate(
   }
 
   return calculateMetrics(rows);
+}
+
+function deduplicateDocumentCitations(citations: RagCitation[]) {
+  const seen = new Set<string>();
+  return citations.filter((citation) => {
+    const key = citation.documentId || citation.title;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function calculateMetrics(
@@ -327,7 +352,7 @@ function calculateMetrics(
   const negativeTopScores = negatives
     .map((row) => row.rerank.topScore)
     .filter((value): value is number => value !== undefined);
-  const gateSweep = [0.01, 0.02, 0.03, 0.05, 0.08, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5].map(
+  const gateSweep = [0.01, 0.02, 0.03, 0.05, 0.08, 0.1, 0.15, 0.165, 0.2, 0.3, 0.4, 0.5].map(
     (threshold) => {
       const positivePassed = positives.filter(
         (row) => (row.rerank.topScore ?? -Infinity) >= threshold,

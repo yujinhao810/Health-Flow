@@ -29,7 +29,7 @@ export class AgentRuntimeService {
   ) {}
 
   async *run(request: AgentRuntimeRequest): AsyncIterable<AgentRuntimeEvent> {
-    const deterministicRecord = await this.tools.tryCreateRecordFromUserText(request.user, request.userInput);
+    const deterministicRecord = await this.tools.tryCreateRecordFromUserText(request.user, request.userInput, request.config, request.signal);
     if (deterministicRecord) {
       yield {
         type: 'tool_result',
@@ -40,6 +40,41 @@ export class AgentRuntimeService {
       };
       yield { type: 'assistant_delta', text: deterministicRecord.assistantText };
       yield { type: 'done', fullText: deterministicRecord.assistantText, inputTokens: 0, outputTokens: deterministicRecord.assistantText.length };
+      return;
+    }
+
+    const deterministicSkill = await this.tools.tryExecuteDeterministicSkill(request.user, request.userInput, request.config, request.signal);
+    if (deterministicSkill) {
+      const id = `deterministic_${deterministicSkill.name}`;
+      yield {
+        type: 'tool_call',
+        id,
+        name: deterministicSkill.name,
+        title: deterministicSkill.title,
+        inputPreview: previewInput(deterministicSkill.input),
+      };
+      yield { type: 'agent_step', message: `正在执行 ${deterministicSkill.title}...` };
+      yield {
+        type: 'tool_result',
+        id,
+        name: deterministicSkill.name,
+        ok: !deterministicSkill.result.isError,
+        summary: deterministicSkill.result.summary,
+      };
+      if (deterministicSkill.result.plan) {
+        yield {
+          type: 'plan_generated',
+          title: deterministicSkill.result.plan.title,
+          timeframe: deterministicSkill.result.plan.timeframe,
+        };
+      }
+      yield { type: 'assistant_delta', text: deterministicSkill.assistantText };
+      yield {
+        type: 'done',
+        fullText: deterministicSkill.assistantText,
+        inputTokens: 0,
+        outputTokens: deterministicSkill.assistantText.length,
+      };
       return;
     }
 

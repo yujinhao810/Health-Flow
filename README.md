@@ -7,8 +7,9 @@ HealthFlow 是一个面向个人健康记录、心理对话和辅助分诊的全
 ## 技术栈
 
 - 前端：React 18、TypeScript、Vite、Ant Design、TanStack Query、Zustand
-- 后端：NestJS、Prisma、PostgreSQL、Redis、BullMQ
-- AI 接入：Mock、本地 Ollama、Anthropic，以及 OpenAI-compatible 协议供应商
+- 后端：NestJS、Prisma、PostgreSQL、Redis、BullMQ、LangGraph.js
+- 文档解析：Python、Docling、PaddleOCR、PDF.js
+- AI 接入：Mock、本地 Ollama、Anthropic、DashScope，以及 OpenAI-compatible 协议供应商
 - 交互：SSE 流式对话、文件上传、知识库检索、账号登录
 - 工作区：pnpm workspace，`apps/web`、`apps/api`、`packages/contracts`
 
@@ -18,10 +19,11 @@ HealthFlow 是一个面向个人健康记录、心理对话和辅助分诊的全
 - 健康记录：睡眠、运动、心情、就医记录的创建、列表和删除
 - 健康总览：今日心情、睡眠趋势、运动频率、主动洞察、最近 Agent 运行记录
 - 心理对话：多轮会话、SSE 流式回复、会话历史、附件上传、引用展示
-- 知识库增强 RAG：内置健康安全知识库和个人知识源分路召回，支持混合检索、RRF 融合、DashScope `gte-rerank-v2` 重排、证据 ID 与连续追问改写
+- 健康工具：通过 Skill Registry 注册和统一执行查询记录、保存记录、读取快照、生成周快照、生成健康计划 5 个 Skill；明确指令由本地确定性路由直接执行，复杂请求再使用模型 Function Calling
+- 知识库增强 RAG：内置 7 篇、21 个治理化语义 Chunk 的健康安全知识库，并与会话级个人知识源分路召回；支持词法与 Embedding 语义检索、RRF 融合、DashScope `gte-rerank-v2` 重排、公共证据门控、证据 ID 与连续追问改写
 - 图片理解：可在模型设置中开启，将本轮上传图片发送给支持视觉能力的上游模型
-- 辅助分诊：分层红旗识别、西医/中医初评、交叉审查和安全仲裁，支持在原会话补充信息后重新会诊
-- 模型设置：Provider、主模型、可选的分诊角色模型、API Key、Base URL、RAG 开关、引用数量和视觉开关
+- 辅助分诊：使用 LangGraph 编排分层红旗识别、西医/中医并行初评、并行交叉审查和安全仲裁，支持在原会话补充信息后重新会诊
+- 模型设置：Provider、主模型、可选的分诊角色模型、API Key、Base URL、最多检索片段数和视觉开关；知识库检索开关位于每轮聊天输入框
 - 安全边界：危机策略、健康免责声明、API Key 后端保存与加密/脱敏显示
 
 ## 目录结构
@@ -30,10 +32,14 @@ HealthFlow 是一个面向个人健康记录、心理对话和辅助分诊的全
 .
 ├─ apps/
 │  ├─ api/                 # NestJS API、Prisma、任务处理和上传存储
+│  │  └─ src/skills/       # Skill Registry、Runner 与健康工具实现
 │  └─ web/                 # React/Vite 前端
 ├─ packages/
 │  └─ contracts/           # 前后端共享类型、Zod schema、模型供应商元数据
-├─ docker-compose.yml      # 本地 PostgreSQL + Redis
+├─ services/
+│  └─ document-parser/     # Python Docling + PaddleOCR 文档解析服务
+├─ docs/                   # RAG 评测报告、测试材料和设计记录
+├─ docker-compose.yml      # 本地 PostgreSQL + Redis + 文档解析服务
 ├─ pnpm-workspace.yaml
 └─ package.json
 ```
@@ -92,7 +98,7 @@ LLM_MODEL=mock-health-assistant
 corepack pnpm infra:up
 ```
 
-这会启动 PostgreSQL 16 和 Redis 7。
+这会启动 PostgreSQL 16、Redis 7，以及位于 `services/document-parser` 的 Docling + PaddleOCR 文档解析服务。首次构建和首次 OCR 需要下载 Python 依赖与模型，耗时会明显长于后续启动。
 
 ### 4. 初始化数据库
 
@@ -153,16 +159,16 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
 
 RAG 和图片理解相关配置：
 
-- `ragEnabled`：是否在心理对话中检索健康安全知识库
+- 每轮聊天输入框中的“知识库检索”开关：控制本轮是否执行公共知识库和当前会话个人文档检索
 - `ragTopK`：每轮最多引用条数，范围 1-10
 - `visionEnabled` / `LLM_VISION_ENABLED`：是否允许把上传图片发送给上游模型
-- `EMBEDDING_MODEL`、`EMBEDDING_BASE_URL`、`EMBEDDING_API_KEY`：可单独指定用户文档向量化使用的 Embedding 配置；不填时复用当前模型供应商
+- `EMBEDDING_MODEL`、`EMBEDDING_BASE_URL`、`EMBEDDING_API_KEY`：可单独指定公共知识库语义召回和用户文档向量化使用的 Embedding 配置；不填时复用当前模型供应商
 - `RAG_RERANK_ENABLED`：是否启用 Rerank，默认开启；失败或超时时自动回退到 RRF
 - `RAG_RERANK_MODEL`：DashScope Rerank 模型，默认 `gte-rerank-v2`
 - `RAG_RERANK_API_KEY`：可选；Qwen 提供商默认复用当前保存的 DashScope API Key
 - `RAG_RERANK_CANDIDATE_K`：送入 Rerank 的候选片段数，默认 20，最终仍受每轮 TopK 限制
 - `RAG_RERANK_TIMEOUT_MS`、`RAG_RERANK_MIN_SCORE`：Rerank 超时和最低相关性分数
-- `RAG_PUBLIC_RERANK_MIN_SCORE`：公共知识库无答案门控阈值，标准集校准默认值为 0.15；低于阈值的公共片段不会进入回答上下文
+- `RAG_PUBLIC_RERANK_MIN_SCORE`：公共知识库无答案门控阈值，标准集校准默认值为 0.165；低于阈值的公共片段不会进入回答上下文
 - 对话中上传的个人知识文档按会话隔离：同一会话可连续追问，新会话不会检索旧会话文件；删除会话时会清理不再被其他消息引用的文件和向量数据
 - `DOCUMENT_PARSER_URL`：Docling + PaddleOCR 解析服务地址，默认 `http://127.0.0.1:8090`
 - `DOCUMENT_PARSER_TIMEOUT_MS`：单个文件解析超时，默认 180 秒
@@ -203,6 +209,8 @@ corepack pnpm --filter api run smoke:api  # 对运行中的 API 做认证/设置
 corepack pnpm dev:worker  # 单独启动后台 worker
 corepack pnpm infra:down  # 停止本地 PostgreSQL / Redis / 文档解析服务
 ```
+
+RAG 校准集位于 `apps/api/evaluation/rag-standard-v1.json`，独立留出集位于 `apps/api/evaluation/rag-standard-v2.json`；当前泛化指标和适用边界见 [`docs/rag-evaluation-report-v2.md`](docs/rag-evaluation-report-v2.md)，语料优化与阈值校准过程见 [`docs/rag-evaluation-report-v1.md`](docs/rag-evaluation-report-v1.md)。
 
 数据库相关：
 

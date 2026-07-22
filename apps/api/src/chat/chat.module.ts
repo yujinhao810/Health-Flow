@@ -9,6 +9,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { SettingsModule } from '../settings/settings.module';
 import { SafetyModule } from '../safety/safety.module';
 import { SnapshotsModule } from '../snapshots/snapshots.module';
+import { SkillsModule } from '../skills/skills.module';
 import { UploadsModule } from '../uploads/uploads.module';
 import { AgentRuntimeService } from './agent-runtime.service';
 import { ChatController } from './chat.controller';
@@ -18,7 +19,7 @@ import { ChatStreamService } from './chat-stream.service';
 import { HealthAgentToolsService } from './health-agent-tools.service';
 
 @Module({
-  imports: [AgentRunsModule, AuthModule, PrismaModule, SettingsModule, LlmModule, MemoryModule, SnapshotsModule, SafetyModule, HealthRecordsModule, KnowledgeModule, UploadsModule],
+  imports: [AgentRunsModule, AuthModule, PrismaModule, SettingsModule, LlmModule, MemoryModule, SnapshotsModule, SafetyModule, HealthRecordsModule, KnowledgeModule, UploadsModule, SkillsModule],
   controllers: [ChatController],
   providers: [ChatService, ChatContextService, ChatStreamService, AgentRuntimeService, HealthAgentToolsService],
   exports: [ChatService, ChatContextService, ChatStreamService],

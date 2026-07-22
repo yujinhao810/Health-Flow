@@ -11,6 +11,7 @@ export type EmbeddingBatch = {
 
 const LOCAL_EMBEDDING_MODEL = 'local-hash-embedding-v1';
 const LOCAL_DIMENSIONS = 384;
+const REMOTE_BATCH_SIZE = 10;
 
 @Injectable()
 export class EmbeddingService {
@@ -22,11 +23,23 @@ export class EmbeddingService {
 
     if (this.llm.supportsEmbeddings(config)) {
       try {
-        const result = await this.llm.embedTexts({ config, texts: normalizedTexts, signal });
-        if (result.vectors.length === normalizedTexts.length && result.vectors.every(isValidVector)) {
+        const vectors: number[][] = [];
+        let model: string | undefined;
+        for (const texts of chunkTexts(normalizedTexts, REMOTE_BATCH_SIZE)) {
+          const result = await this.llm.embedTexts({ config, texts, signal });
+          if (model && result.model !== model) {
+            throw new Error(`Embedding API 批次模型不一致：${model} / ${result.model}`);
+          }
+          if (result.vectors.length !== texts.length || !result.vectors.every(isValidVector)) {
+            throw new Error('Embedding API 返回的向量数量或格式无效');
+          }
+          model = result.model;
+          vectors.push(...result.vectors);
+        }
+        if (model && vectors.length === normalizedTexts.length) {
           return {
-            vectors: result.vectors.map(normalizeVector),
-            model: result.model,
+            vectors: vectors.map(normalizeVector),
+            model,
             provider: config.provider,
           };
         }
@@ -47,6 +60,14 @@ export class EmbeddingService {
       fallbackReason: '当前模型提供商没有可用的 Embedding API',
     };
   }
+}
+
+function chunkTexts(texts: string[], size: number) {
+  const chunks: string[][] = [];
+  for (let index = 0; index < texts.length; index += size) {
+    chunks.push(texts.slice(index, index + size));
+  }
+  return chunks;
 }
 
 export function cosineSimilarity(left: number[], right: number[]) {

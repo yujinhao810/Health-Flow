@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import type { RagCitation } from "@health/shared";
+import { EmbeddingService } from "../src/knowledge/embedding.service";
+import type { LlmService } from "../src/llm/llm.provider";
 import {
   buildContextualRetrievalQuery,
   insertKnowledgeReferenceMessage,
@@ -24,6 +26,33 @@ function citation(
 ): RagCitation {
   return { chunkId, documentId, title: chunkId, excerpt: chunkId, score };
 }
+
+test("remote embeddings are requested in stable batches of ten", async () => {
+  const received: string[][] = [];
+  const llm = {
+    supportsEmbeddings: () => true,
+    embedTexts: async (request: { texts: string[] }) => {
+      received.push(request.texts);
+      return {
+        model: "remote-embedding-model",
+        vectors: request.texts.map((text) => [Number(text.split("-")[1]) + 1, 1]),
+      };
+    },
+  } as unknown as LlmService;
+  const service = new EmbeddingService(llm);
+  const texts = Array.from({ length: 21 }, (_, index) => `text-${index}`);
+
+  const result = await service.embedTexts(
+    { provider: "qwen", model: "qwen-plus" },
+    texts,
+  );
+
+  assert.deepEqual(received.map((batch) => batch.length), [10, 10, 1]);
+  assert.deepEqual(received.flat(), texts);
+  assert.equal(result.vectors.length, texts.length);
+  assert.equal(result.model, "remote-embedding-model");
+  assert.equal(result.provider, "qwen");
+});
 
 test("embedding similarity is used only for the exact same model and dimensions", () => {
   assert.equal(

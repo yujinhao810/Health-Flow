@@ -28,7 +28,7 @@ export class RerankService {
   get publicMinimumScore() {
     return numericConfig(
       this.config.get<number | string>("RAG_PUBLIC_RERANK_MIN_SCORE"),
-      0.15,
+      0.165,
       true,
     );
   }

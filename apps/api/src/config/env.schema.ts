@@ -39,7 +39,7 @@ export const envSchema = z.object({
     .number()
     .min(0)
     .max(1)
-    .default(0.15),
+    .default(0.165),
   DOCUMENT_PARSER_URL: z.string().url().default("http://127.0.0.1:8090"),
   DOCUMENT_PARSER_TIMEOUT_MS: z.coerce
     .number()
