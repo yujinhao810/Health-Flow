@@ -42,6 +42,7 @@ export const LLM_PROVIDER_METADATA = {
     requiresApiKey: true,
     apiKeyEnv: 'ANTHROPIC_API_KEY',
     baseUrlEnv: 'ANTHROPIC_BASE_URL',
+    defaultBaseUrl: 'https://api.anthropic.com',
     defaultModel: 'claude-opus-4-8',
     models: [
       'claude-opus-4-8',
@@ -246,6 +247,14 @@ export const llmConfigSchema = z.object({
   ragEnabled: z.boolean().optional(),
   ragTopK: z.coerce.number().int().min(1).max(10).optional(),
   visionEnabled: z.boolean().optional(),
+}).superRefine((config, context) => {
+  if (config.provider !== 'mock' && !config.baseUrl) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['baseUrl'],
+      message: 'Base URL is required for remote model providers',
+    });
+  }
 });
 
 export type LlmConfigInput = z.infer<typeof llmConfigSchema>;

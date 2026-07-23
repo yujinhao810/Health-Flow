@@ -96,13 +96,18 @@ export function ModelConfigTab() {
         }),
       );
     } catch {
-      message.warning("请先填写提供商和模型");
+      message.warning("请先填写提供商、模型和 Base URL");
     }
   }
 
-  function handleProviderChange() {
+  function handleProviderChange(nextProvider: LlmProviderName) {
+    const nextProviderMeta = LLM_PROVIDER_METADATA[nextProvider];
+    const nextDefaultBaseUrl =
+      "defaultBaseUrl" in nextProviderMeta
+        ? nextProviderMeta.defaultBaseUrl
+        : undefined;
     form.setFieldValue("model", "");
-    form.setFieldValue("baseUrl", undefined);
+    form.setFieldValue("baseUrl", nextDefaultBaseUrl);
     form.setFieldValue("apiKey", undefined);
   }
 
@@ -137,6 +142,24 @@ export function ModelConfigTab() {
           extra="填写提供商控制台中的模型 ID，如 gpt-4o、claude-sonnet-4-20250514、qwen-max 等。"
         >
           <Input placeholder={providerMeta.defaultModel} />
+        </Form.Item>
+        <Form.Item
+          name="baseUrl"
+          label="Base URL"
+          rules={[
+            { required: provider !== "mock", message: "请输入 Base URL" },
+            { type: "url", message: "请输入有效的 URL" },
+          ]}
+          extra={
+            provider === "mock"
+              ? "Mock 本地模拟无需 Base URL。"
+              : "模型服务的 API 地址。"
+          }
+        >
+          <Input
+            disabled={provider === "mock"}
+            placeholder={defaultBaseUrl ?? "https://api.example.com/v1"}
+          />
         </Form.Item>
         <Form.Item
           name="apiKey"
@@ -180,19 +203,6 @@ export function ModelConfigTab() {
               ),
               children: (
                 <>
-                  <Form.Item
-                    name="baseUrl"
-                    label="Base URL（可选）"
-                    extra="自定义模型服务的 API 地址。留空则使用默认地址，适合大多数情况。"
-                  >
-                    <Input
-                      placeholder={
-                        defaultBaseUrl
-                          ? `默认：${defaultBaseUrl}`
-                          : "留空使用默认地址"
-                      }
-                    />
-                  </Form.Item>
                   <Typography.Text strong>
                     辅助分诊角色模型（可选）
                   </Typography.Text>
@@ -256,6 +266,7 @@ function normalizeApiKeyInput(apiKey?: string) {
 function normalizeConfigInput(values: LlmConfigInput): LlmConfigInput {
   return {
     ...values,
+    baseUrl: values.baseUrl?.trim() || undefined,
     diagnosisWesternModel: values.diagnosisWesternModel?.trim() || undefined,
     diagnosisTcmModel: values.diagnosisTcmModel?.trim() || undefined,
     diagnosisReviewerModel: values.diagnosisReviewerModel?.trim() || undefined,
