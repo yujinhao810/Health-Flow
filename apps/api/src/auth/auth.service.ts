@@ -1,12 +1,21 @@
-import { BadRequestException, Injectable, NotFoundException, OnModuleInit, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { User } from '@prisma/client';
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 import { mkdir, rm, stat, writeFile } from 'fs/promises';
 import { extname, join, resolve } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthUser } from './auth.types';
-import { ChangePasswordDto, LoginDto, RegisterDto, UpdatePreferencesDto, UpdateProfileDto } from './dto/auth.dto';
+import {
+  ChangePasswordDto,
+  ForgotPasswordDto,
+  LoginDto,
+  RegisterDto,
+  ResetPasswordDto,
+  UpdatePreferencesDto,
+  UpdateProfileDto,
+} from './dto/auth.dto';
+import { PasswordResetMailer } from './password-reset-mailer.service';
 
 const PASSWORD_PREFIX = 'scrypt';
 const JWT_ALGORITHM = 'HS256';
@@ -15,6 +24,9 @@ const DEFAULT_ADMIN_EMAIL = 'admin@healthflow.local';
 const DEFAULT_ADMIN_PASSWORD = '12345678';
 const DEFAULT_ADMIN_DISPLAY_NAME = 'admin';
 const DEFAULT_AVATAR_DIR = resolve(process.cwd(), 'storage', 'avatars');
+const PASSWORD_RESET_TTL_MS = 30 * 60 * 1000;
+const PASSWORD_RESET_COOLDOWN_MS = 60 * 1000;
+const PASSWORD_RESET_RESPONSE = '如果该邮箱已注册，我们会发送一封密码重置邮件';
 const AVATAR_MIME_TYPES = new Map([
   ['image/png', '.png'],
   ['image/jpeg', '.jpg'],
@@ -38,9 +50,12 @@ type AccessTokenPayload = {
 
 @Injectable()
 export class AuthService implements OnModuleInit {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly passwordResetMailer: PasswordResetMailer,
   ) {}
 
   async onModuleInit() {
@@ -99,6 +114,81 @@ export class AuthService implements OnModuleInit {
     });
 
     return this.toAuthResult(updated);
+  }
+
+  async requestPasswordReset(input: ForgotPasswordDto) {
+    const email = normalizeEmail(input.email);
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    const response = { message: PASSWORD_RESET_RESPONSE };
+
+    if (!user?.passwordHash || user.disabledAt) return response;
+
+    const recentToken = await this.prisma.passwordResetToken.findFirst({
+      where: {
+        userId: user.id,
+        usedAt: null,
+        createdAt: { gt: new Date(Date.now() - PASSWORD_RESET_COOLDOWN_MS) },
+      },
+      select: { id: true },
+    });
+    if (recentToken) return response;
+
+    const token = randomBytes(32).toString('base64url');
+    const tokenHash = hashResetToken(token);
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+
+    const resetRecord = await this.prisma.$transaction(async (transaction) => {
+      await transaction.passwordResetToken.deleteMany({ where: { userId: user.id } });
+      return transaction.passwordResetToken.create({
+        data: { userId: user.id, tokenHash, expiresAt },
+      });
+    });
+
+    const webBaseUrl = (this.config.get<string>('WEB_BASE_URL') || this.config.get<string>('CORS_ORIGIN') || 'http://localhost:5173').replace(
+      /\/$/,
+      '',
+    );
+    const resetUrl = `${webBaseUrl}/?resetToken=${encodeURIComponent(token)}`;
+
+    try {
+      await this.passwordResetMailer.send(user.email, resetUrl, token);
+    } catch (error) {
+      await this.prisma.passwordResetToken.deleteMany({ where: { id: resetRecord.id } });
+      this.logger.error(`Unable to send password reset email to ${user.email}`, error instanceof Error ? error.stack : undefined);
+    }
+
+    return response;
+  }
+
+  async resetPassword(input: ResetPasswordDto) {
+    const tokenRecord = await this.prisma.passwordResetToken.findUnique({
+      where: { tokenHash: hashResetToken(input.token) },
+      include: { user: true },
+    });
+    const now = new Date();
+
+    if (!tokenRecord || tokenRecord.usedAt || tokenRecord.expiresAt <= now || tokenRecord.user.disabledAt) {
+      throw new BadRequestException('重置链接无效或已过期，请重新申请');
+    }
+
+    await this.prisma.$transaction(async (transaction) => {
+      const consumed = await transaction.passwordResetToken.updateMany({
+        where: { id: tokenRecord.id, usedAt: null, expiresAt: { gt: now } },
+        data: { usedAt: now },
+      });
+      if (consumed.count !== 1) throw new BadRequestException('重置链接无效或已过期，请重新申请');
+
+      await transaction.user.update({
+        where: { id: tokenRecord.userId },
+        data: { passwordHash: hashPassword(input.newPassword), tokenVersion: { increment: 1 } },
+      });
+      await transaction.passwordResetToken.updateMany({
+        where: { userId: tokenRecord.userId, usedAt: null },
+        data: { usedAt: now },
+      });
+    });
+
+    return { success: true as const };
   }
 
   async getUserFromToken(token: string) {
@@ -342,6 +432,10 @@ export class AuthService implements OnModuleInit {
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
+}
+
+function hashResetToken(token: string) {
+  return createHash('sha256').update(token).digest('base64url');
 }
 
 function encodeJwtPart(value: unknown) {

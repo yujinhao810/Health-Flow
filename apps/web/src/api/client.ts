@@ -34,10 +34,22 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     if (response.status === 401) clearAuthToken();
-    throw new Error(await response.text());
+    const responseBody = await response.text();
+    throw new Error(readApiError(responseBody));
   }
 
   return response.json() as Promise<T>;
+}
+
+function readApiError(responseBody: string) {
+  try {
+    const parsed = JSON.parse(responseBody) as { message?: string | string[] };
+    if (Array.isArray(parsed.message)) return parsed.message.join('；');
+    if (typeof parsed.message === 'string') return parsed.message;
+  } catch {
+    // Non-JSON upstream errors are shown as-is.
+  }
+  return responseBody || '请求失败，请稍后重试';
 }
 
 export function withAuthToken(url: string) {

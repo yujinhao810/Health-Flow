@@ -87,7 +87,8 @@ LLM_MODEL=mock-health-assistant
 
 - `DATABASE_URL`：PostgreSQL 连接，默认 `postgresql://health:health@localhost:5432/health_assistant`
 - `REDIS_URL`：Redis 连接，默认 `redis://localhost:6379`
-- `CORS_ORIGIN`：前端地址，默认 `http://localhost:5173`
+- `CORS_ORIGIN`、`WEB_BASE_URL`：前端跨域来源和密码重置链接地址，默认 `http://localhost:5173`
+- `SMTP_URL`、`SMTP_FROM`：密码重置邮件的 SMTP 服务和发件人；本地默认使用 Mailpit 的 `smtp://localhost:1025`
 - `ENCRYPTION_KEY`：后端加密模型 API Key，也会作为本地登录 token 的兜底签名密钥
 - `VITE_API_BASE_URL`：前端 API 地址，开发环境默认 `/api`，由 Vite 代理到 `http://localhost:3001`
 - `MAX_UPLOAD_BYTES`、`ALLOWED_UPLOAD_MIME_TYPES`：上传大小和文件类型限制
@@ -98,7 +99,7 @@ LLM_MODEL=mock-health-assistant
 corepack pnpm infra:up
 ```
 
-这会启动 PostgreSQL 16、Redis 7，以及位于 `services/document-parser` 的 Docling + PaddleOCR 文档解析服务。首次构建和首次 OCR 需要下载 Python 依赖与模型，耗时会明显长于后续启动。
+这会启动 PostgreSQL 16、Redis 7、用于本地查看重置邮件的 Mailpit，以及位于 `services/document-parser` 的 Docling + PaddleOCR 文档解析服务。Mailpit 收件箱位于 `http://localhost:8025`。首次构建和首次 OCR 需要下载 Python 依赖与模型，耗时会明显长于后续启动。
 
 ### 4. 初始化数据库
 

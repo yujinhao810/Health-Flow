@@ -32,12 +32,29 @@ export type RegisterInput = LoginInput & {
   displayName?: string;
 };
 
+export type ForgotPasswordInput = {
+  email: string;
+};
+
+export type ResetPasswordInput = {
+  token: string;
+  newPassword: string;
+};
+
 export function login(input: LoginInput) {
   return api<AuthResult>('/auth/login', { method: 'POST', body: JSON.stringify(input) });
 }
 
 export function register(input: RegisterInput) {
   return api<AuthResult>('/auth/register', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function requestPasswordReset(input: ForgotPasswordInput) {
+  return api<{ message: string }>('/auth/forgot-password', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function resetPassword(input: ResetPasswordInput) {
+  return api<{ success: true }>('/auth/reset-password', { method: 'POST', body: JSON.stringify(input) });
 }
 
 export function getCurrentUser() {

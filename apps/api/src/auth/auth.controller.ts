@@ -5,7 +5,15 @@ import { createReadStream } from 'fs';
 import { AuthGuard } from './auth.guard';
 import { AuthService } from './auth.service';
 import { CurrentUser } from './current-user.decorator';
-import { ChangePasswordDto, LoginDto, RegisterDto, UpdatePreferencesDto, UpdateProfileDto } from './dto/auth.dto';
+import {
+  ChangePasswordDto,
+  ForgotPasswordDto,
+  LoginDto,
+  RegisterDto,
+  ResetPasswordDto,
+  UpdatePreferencesDto,
+  UpdateProfileDto,
+} from './dto/auth.dto';
 import type { AuthUser } from './auth.types';
 
 @Controller('auth')
@@ -20,6 +28,16 @@ export class AuthController {
   @Post('login')
   login(@Body() body: LoginDto) {
     return this.auth.login(body);
+  }
+
+  @Post('forgot-password')
+  forgotPassword(@Body() body: ForgotPasswordDto) {
+    return this.auth.requestPasswordReset(body);
+  }
+
+  @Post('reset-password')
+  resetPassword(@Body() body: ResetPasswordDto) {
+    return this.auth.resetPassword(body);
   }
 
   @Get('me')
