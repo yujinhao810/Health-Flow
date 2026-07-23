@@ -11,9 +11,11 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .venv/
-pnpm-lock.yaml
 apps/**/dist
 apps/**/.turbo
 packages/**/dist
 apps/api/prisma/dev.db
 apps/api/storage/avatars/
+apps/api/storage/uploads/
+.env.production
+*.tsbuildinfo

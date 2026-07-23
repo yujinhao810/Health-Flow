@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { ChatModule } from './chat/chat.module';
 import { envSchema } from './config/env.schema';
 import { HealthRecordsModule } from './health-records/health-records.module';
+import { HealthCheckModule } from './health-check/health-check.module';
 import { IntegrativeDiagnosisModule } from './integrative-diagnosis/integrative-diagnosis.module';
 import { InsightsModule } from './insights/insights.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
@@ -30,6 +31,7 @@ import { UploadsModule } from './uploads/uploads.module';
     SafetyModule,
     SettingsModule,
     HealthRecordsModule,
+    HealthCheckModule,
     SnapshotsModule,
     KnowledgeModule,
     UploadsModule,

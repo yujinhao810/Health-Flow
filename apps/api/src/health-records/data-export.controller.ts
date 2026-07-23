@@ -106,7 +106,8 @@ function flattenPayload(value: unknown, prefix = ''): Record<string, string> {
 }
 
 function csvEscape(value: unknown) {
-  const text = String(value ?? '');
+  const raw = String(value ?? '');
+  const text = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
   if (!/[",\n\r]/.test(text)) return text;
   return `"${text.replace(/"/g, '""')}"`;
 }

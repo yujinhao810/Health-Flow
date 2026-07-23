@@ -2,19 +2,23 @@ import { LLM_PROVIDER_IDS } from "@health/shared";
 import { z } from "zod";
 
 export const envSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   API_PORT: z.coerce.number().default(3001),
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().default("redis://localhost:6379"),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
   JWT_SECRET: z.string().min(8).optional(),
-  JWT_ACCESS_TTL: z.string().default("30d"),
+  JWT_ACCESS_TTL: z.string().default("2h"),
   WEB_BASE_URL: z.string().url().optional(),
+  ADMIN_EMAIL: z.string().email().optional(),
+  ADMIN_PASSWORD: z.string().min(12).optional(),
   SMTP_URL: z.string().url().optional(),
   SMTP_FROM: z.string().default("HealthFlow <no-reply@healthflow.local>"),
   SMTP_CONNECTION_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   SMTP_GREETING_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   SMTP_SOCKET_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
   ENCRYPTION_KEY: z.string().min(16).optional(),
+  ALLOW_CUSTOM_LLM_BASE_URLS: z.enum(["true", "false"]).default("false"),
   LLM_PROVIDER: z.enum(LLM_PROVIDER_IDS).default("mock"),
   LLM_MODEL: z.string().optional(),
   LLM_VISION_ENABLED: z.string().optional(),
@@ -89,6 +93,8 @@ export const envSchema = z.object({
   VOLCENGINE_API_KEY: z.string().optional(),
   VOLCENGINE_BASE_URL: z.string().optional(),
   UPLOAD_DIR: z.string().optional(),
+  AVATAR_DIR: z.string().optional(),
+  MAX_AVATAR_BYTES: z.coerce.number().int().positive().default(2 * 1024 * 1024),
   MAX_UPLOAD_BYTES: z.coerce
     .number()
     .int()
@@ -99,6 +105,29 @@ export const envSchema = z.object({
     .default(
       "image/png,image/jpeg,image/webp,image/gif,image/bmp,image/tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,application/json,text/csv",
     ),
+}).superRefine((env, context) => {
+  if (Boolean(env.ADMIN_EMAIL) !== Boolean(env.ADMIN_PASSWORD)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "ADMIN_EMAIL and ADMIN_PASSWORD must be configured together",
+    });
+  }
+
+  if (env.NODE_ENV !== "production") return;
+
+  const weakValues = new Set(["change-me", "changeme", "secret", "development"]);
+  if (!env.JWT_SECRET || env.JWT_SECRET.length < 32 || weakValues.has(env.JWT_SECRET.toLowerCase())) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["JWT_SECRET"], message: "JWT_SECRET must be at least 32 non-placeholder characters in production" });
+  }
+  if (!env.ENCRYPTION_KEY || env.ENCRYPTION_KEY.length < 32 || weakValues.has(env.ENCRYPTION_KEY.toLowerCase())) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["ENCRYPTION_KEY"], message: "ENCRYPTION_KEY must be at least 32 non-placeholder characters in production" });
+  }
+  if (!env.WEB_BASE_URL?.startsWith("https://")) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["WEB_BASE_URL"], message: "WEB_BASE_URL must use HTTPS in production" });
+  }
+  if (!env.CORS_ORIGIN.startsWith("https://")) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["CORS_ORIGIN"], message: "CORS_ORIGIN must use HTTPS in production" });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;

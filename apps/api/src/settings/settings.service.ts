@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LLM_PROVIDER_METADATA, LlmProviderName } from '@health/shared';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
+import { isIP } from 'net';
 import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { LlmConfig } from '../llm/llm.types';
@@ -118,6 +119,7 @@ export class SettingsService {
   }
 
   async saveLlmConfig(user: AuthUser, config: LlmConfig) {
+    this.assertAllowedUserBaseUrl(config.provider, config.baseUrl);
     const current = await this.prisma.userLlmConfig.findFirst({
       where: { userId: user.id, enabled: true },
       orderBy: { updatedAt: 'desc' },
@@ -169,6 +171,33 @@ export class SettingsService {
         enabled: true,
       },
     });
+  }
+
+  assertAllowedUserBaseUrl(provider: LlmProviderName, baseUrl?: string) {
+    const value = normalizeBaseUrl(baseUrl);
+    if (!value) return;
+
+    const configuredUrl = normalizeBaseUrl(this.resolveBaseUrl(provider));
+    if (configuredUrl && trimTrailingSlash(value) === trimTrailingSlash(configuredUrl)) return;
+    if (this.config.get<string>('NODE_ENV') !== 'production') return;
+    if (this.config.get<string>('ALLOW_CUSTOM_LLM_BASE_URLS') !== 'true') {
+      throw new BadRequestException('生产环境未启用自定义模型服务地址');
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(value);
+    } catch {
+      throw new BadRequestException('模型服务地址格式无效');
+    }
+    if (parsed.protocol !== 'https:') throw new BadRequestException('自定义模型服务地址必须使用 HTTPS');
+    if (parsed.username || parsed.password) throw new BadRequestException('模型服务地址不能包含用户名或密码');
+
+    const hostname = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local')) {
+      throw new BadRequestException('模型服务地址不能指向本机或局域网主机');
+    }
+    if (isPrivateIp(hostname)) throw new BadRequestException('模型服务地址不能指向内网 IP');
   }
 
   private getProviderApiKey(provider: LlmProviderName) {
@@ -243,4 +272,20 @@ function normalizeOptionalModel(value: string | undefined) {
 function normalizeBaseUrl(baseUrl?: string) {
   const value = baseUrl?.trim();
   return value || undefined;
+}
+
+function trimTrailingSlash(value: string) {
+  return value.replace(/\/+$/, '');
+}
+
+function isPrivateIp(hostname: string) {
+  const version = isIP(hostname);
+  if (version === 4) {
+    const [a, b] = hostname.split('.').map(Number);
+    return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+  }
+  if (version === 6) {
+    return hostname === '::1' || hostname === '::' || hostname.startsWith('fc') || hostname.startsWith('fd') || hostname.startsWith('fe8') || hostname.startsWith('fe9') || hostname.startsWith('fea') || hostname.startsWith('feb');
+  }
+  return false;
 }

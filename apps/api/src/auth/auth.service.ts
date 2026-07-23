@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { User } from '@prisma/client';
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 import { mkdir, rm, stat, writeFile } from 'fs/promises';
-import { extname, join, resolve } from 'path';
+import { extname, isAbsolute, join, relative, resolve } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthUser } from './auth.types';
 import {
@@ -19,11 +19,12 @@ import { PasswordResetMailer } from './password-reset-mailer.service';
 
 const PASSWORD_PREFIX = 'scrypt';
 const JWT_ALGORITHM = 'HS256';
-const DEFAULT_JWT_ACCESS_TTL = '30d';
-const DEFAULT_ADMIN_EMAIL = 'admin@healthflow.local';
-const DEFAULT_ADMIN_PASSWORD = '12345678';
-const DEFAULT_ADMIN_DISPLAY_NAME = 'admin';
+const DEFAULT_JWT_ACCESS_TTL = '2h';
+const DEFAULT_ADMIN_DISPLAY_NAME = 'Admin';
+const LEGACY_ADMIN_EMAIL = 'admin@healthflow.local';
+const LEGACY_ADMIN_PASSWORD = '12345678';
 const DEFAULT_AVATAR_DIR = resolve(process.cwd(), 'storage', 'avatars');
+const DEFAULT_UPLOAD_DIR = resolve(process.cwd(), 'storage', 'uploads');
 const PASSWORD_RESET_TTL_MS = 30 * 60 * 1000;
 const PASSWORD_RESET_COOLDOWN_MS = 60 * 1000;
 const PASSWORD_RESET_RESPONSE = '如果该邮箱已注册，我们会发送一封密码重置邮件';
@@ -59,7 +60,8 @@ export class AuthService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    await this.ensureDefaultAdmin();
+    await this.disableUnsafeLegacyAdmin();
+    await this.ensureBootstrapAdmin();
   }
 
   async register(input: RegisterDto) {
@@ -291,7 +293,29 @@ export class AuthService implements OnModuleInit {
   }
 
   async deleteAccount(userId: string) {
+    const files = await this.prisma.uploadedFile.findMany({
+      where: { userId },
+      select: { storagePath: true },
+    });
     await this.prisma.user.delete({ where: { id: userId } });
+
+    const uploadUserDir = join(resolve(this.config.get<string>('UPLOAD_DIR') || DEFAULT_UPLOAD_DIR), userId);
+    const avatarUserDir = this.getAvatarUserDir(userId);
+    const cleanupTargets = [...files.map((file) => resolve(file.storagePath)), uploadUserDir, avatarUserDir];
+    await Promise.all(
+      cleanupTargets.map(async (target) => {
+        const allowedRoot = target === avatarUserDir ? avatarUserDir : uploadUserDir;
+        if (!isPathWithin(target, allowedRoot)) {
+          this.logger.warn(`Skipped account file cleanup outside user storage: ${target}`);
+          return;
+        }
+        try {
+          await rm(target, { recursive: target === uploadUserDir || target === avatarUserDir, force: true });
+        } catch (error) {
+          this.logger.warn(`Unable to clean account file ${target}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }),
+    );
     return { deleted: true as const };
   }
 
@@ -319,29 +343,21 @@ export class AuthService implements OnModuleInit {
     };
   }
 
-  private async ensureDefaultAdmin() {
-    const existing = await this.prisma.user.findUnique({ where: { email: DEFAULT_ADMIN_EMAIL } });
+  private async ensureBootstrapAdmin() {
+    const configuredEmail = this.config.get<string>('ADMIN_EMAIL');
+    const configuredPassword = this.config.get<string>('ADMIN_PASSWORD');
+    if (!configuredEmail || !configuredPassword) return;
 
-    if (existing) {
-      await this.prisma.user.update({
-        where: { id: existing.id },
-        data: {
-          displayName: existing.displayName || DEFAULT_ADMIN_DISPLAY_NAME,
-          role: 'admin',
-          disabledAt: null,
-          passwordHash: existing.passwordHash || hashPassword(DEFAULT_ADMIN_PASSWORD),
-        },
-      });
-      await this.ensureDefaultLlmConfig(existing.id);
-      return;
-    }
+    const email = normalizeEmail(configuredEmail);
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+    if (existing) return;
 
     const user = await this.prisma.user.create({
       data: {
-        email: DEFAULT_ADMIN_EMAIL,
+        email,
         displayName: DEFAULT_ADMIN_DISPLAY_NAME,
         role: 'admin',
-        passwordHash: hashPassword(DEFAULT_ADMIN_PASSWORD),
+        passwordHash: hashPassword(configuredPassword),
         llmConfigs: {
           create: {
             provider: 'mock',
@@ -355,6 +371,18 @@ export class AuthService implements OnModuleInit {
     });
 
     await this.ensureDefaultLlmConfig(user.id);
+    this.logger.log(`Created bootstrap administrator ${email}; remove ADMIN_PASSWORD after the first successful deployment`);
+  }
+
+  private async disableUnsafeLegacyAdmin() {
+    const user = await this.prisma.user.findUnique({ where: { email: LEGACY_ADMIN_EMAIL } });
+    if (!user?.passwordHash || user.disabledAt || !verifyPassword(LEGACY_ADMIN_PASSWORD, user.passwordHash)) return;
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { disabledAt: new Date(), tokenVersion: { increment: 1 } },
+    });
+    this.logger.warn(`Disabled legacy administrator ${LEGACY_ADMIN_EMAIL} because it still used the public default password`);
   }
 
   private async ensureDefaultLlmConfig(userId: string) {
@@ -502,4 +530,9 @@ function getAvatarMimeType(filename: string) {
   if (extension === '.webp') return 'image/webp';
   if (extension === '.gif') return 'image/gif';
   return undefined;
+}
+
+function isPathWithin(target: string, root: string) {
+  const relativePath = relative(resolve(root), resolve(target));
+  return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath));
 }

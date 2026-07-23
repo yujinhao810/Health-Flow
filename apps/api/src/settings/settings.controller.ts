@@ -31,6 +31,7 @@ export class SettingsController {
   async validate(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     try {
       const config = parseLlmConfig(body);
+      this.settings.assertAllowedUserBaseUrl(config.provider, config.baseUrl);
       const current = await this.settings.getLlmConfig(user);
       const mergedConfig = this.settings.resolveProviderRuntimeConfig({
         ...config,

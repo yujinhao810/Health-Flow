@@ -15,27 +15,37 @@ import {
   UpdateProfileDto,
 } from './dto/auth.dto';
 import type { AuthUser } from './auth.types';
+import { RateLimit } from '../common/rate-limit.decorator';
+import { RateLimitGuard } from '../common/rate-limit.guard';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post('register')
+  @RateLimit(5, 10 * 60 * 1000)
+  @UseGuards(RateLimitGuard)
   register(@Body() body: RegisterDto) {
     return this.auth.register(body);
   }
 
   @Post('login')
+  @RateLimit(10, 60 * 1000)
+  @UseGuards(RateLimitGuard)
   login(@Body() body: LoginDto) {
     return this.auth.login(body);
   }
 
   @Post('forgot-password')
+  @RateLimit(5, 10 * 60 * 1000)
+  @UseGuards(RateLimitGuard)
   forgotPassword(@Body() body: ForgotPasswordDto) {
     return this.auth.requestPasswordReset(body);
   }
 
   @Post('reset-password')
+  @RateLimit(10, 10 * 60 * 1000)
+  @UseGuards(RateLimitGuard)
   resetPassword(@Body() body: ResetPasswordDto) {
     return this.auth.resetPassword(body);
   }

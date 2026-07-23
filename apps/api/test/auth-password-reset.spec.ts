@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AuthService } from '../src/auth/auth.service';
+import { AuthService, hashPassword } from '../src/auth/auth.service';
 
 const user = {
   id: 'user-1',
@@ -103,7 +103,49 @@ test('a reset link changes the password once and invalidates the old password', 
   await assert.rejects(service.resetPassword({ token, newPassword: 'another-password-123' }), /无效或已过期/);
 });
 
-function createAuthService(prisma: object, mailer: object) {
+test('startup disables only the legacy administrator that still uses the public password', async () => {
+  const legacyUser = {
+    ...user,
+    id: 'legacy-admin',
+    email: 'admin@healthflow.local',
+    role: 'admin',
+    passwordHash: hashPassword('12345678'),
+  };
+  let disabled = false;
+  const prisma = {
+    user: {
+      findUnique: async () => legacyUser,
+      update: async () => void (disabled = true),
+    },
+  };
+
+  await createAuthService(prisma, { send: async () => undefined }).onModuleInit();
+
+  assert.equal(disabled, true);
+});
+
+test('bootstrap administrator is created once and never overwrites an existing account', async () => {
+  let created = 0;
+  const existingAdmin = { ...user, email: 'owner@example.com', role: 'user' };
+  const prisma = {
+    user: {
+      findUnique: async ({ where }: { where: { email: string } }) =>
+        where.email === 'admin@healthflow.local' ? null : existingAdmin,
+      create: async () => void (created += 1),
+    },
+  };
+  const service = createAuthService(prisma, { send: async () => undefined }, {
+    ADMIN_EMAIL: 'owner@example.com',
+    ADMIN_PASSWORD: 'a-long-bootstrap-password',
+  });
+
+  await service.onModuleInit();
+
+  assert.equal(created, 0);
+  assert.equal(existingAdmin.role, 'user');
+});
+
+function createAuthService(prisma: object, mailer: object, overrides: Record<string, string> = {}) {
   const config = {
     get: (key: string) => {
       const values: Record<string, string> = {
@@ -112,7 +154,7 @@ function createAuthService(prisma: object, mailer: object) {
         JWT_SECRET: 'test-jwt-secret',
         JWT_ACCESS_TTL: '30d',
       };
-      return values[key];
+      return overrides[key] ?? values[key];
     },
   };
 

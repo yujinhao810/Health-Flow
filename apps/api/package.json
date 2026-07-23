@@ -22,7 +22,7 @@
     "prisma:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.88.0",
+    "@anthropic-ai/sdk": "^0.91.1",
     "@health/shared": "workspace:*",
     "@langchain/langgraph": "1.4.8",
     "@nestjs/bullmq": "^10.2.2",

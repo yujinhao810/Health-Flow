@@ -231,12 +231,38 @@ Windows 下仓库根目录还提供了 `start-api-3001.cmd` 和 `start-web-5173.
 - 模型连接失败：先在“模型设置”页使用“测试连接”，检查 API Key、Base URL、代理和后端网络
 - RAG 引用为空：确认已运行 `corepack pnpm db:seed`，并且模型设置中开启了知识库增强
 
-## 生产化提醒
+## 单机生产部署
 
-当前项目仍偏开发阶段。正式部署前至少需要补齐：
+仓库提供了适合个人或少量用户的单机 Docker Compose 配置。它会启动 Web、API、PostgreSQL、Redis 和文档解析服务，仅 Web 端口对宿主机开放；API 启动前会自动执行已提交的 Prisma migration。
 
-- 更严格的认证、权限、密码策略和 token 管理
-- API Key/KMS、上传文件隔离、审计日志和数据删除/导出流程
-- 医疗/心理安全审查、风险分级策略、危机干预流程
-- Worker 部署、任务重试、日志监控、告警和备份恢复
-- 扩充由临床专业人员审阅的安全评测集、对抗样本和真实模型对照实验
+1. 复制生产环境模板并填写真实值：
+
+```bash
+cp .env.production.example .env.production
+```
+
+至少需要修改 `POSTGRES_PASSWORD`、`DATABASE_URL`、`JWT_SECRET`、`ENCRYPTION_KEY`、`CORS_ORIGIN`、`WEB_BASE_URL` 和 SMTP 配置。两个密钥应分别使用至少 32 位的随机值，数据库密码需要与 `DATABASE_URL` 中的值一致。QQ 邮箱使用的是 SMTP 授权码，不是网页登录密码。
+
+2. 在云平台、Caddy、Traefik 或负载均衡器上配置域名和 HTTPS，再让它转发到本机 `8080` 端口。应用在生产模式下会拒绝 HTTP 的公开 URL。
+
+3. 构建并启动：
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env.production -f docker-compose.prod.yml ps
+```
+
+4. 检查服务：
+
+```bash
+curl https://你的域名/api/healthz/live
+curl https://你的域名/api/healthz/ready
+```
+
+如需首个管理员，可在第一次部署时同时设置 `ADMIN_EMAIL` 和至少 12 位的 `ADMIN_PASSWORD`。账号只会在不存在时创建，不会覆盖已有账号；创建成功后应从 `.env.production` 删除 `ADMIN_PASSWORD` 并重新部署。普通使用也可以直接注册，不必创建管理员。
+
+上线后的最低维护要求：定期备份 `postgres_prod_data` 和 `api_prod_storage`，更新依赖并运行 `corepack pnpm audit --prod`。个人 QQ 邮箱适合当前低流量项目；如果以后公开推广，建议改用域名邮箱服务并配置 SPF、DKIM、DMARC。任何曾粘贴到聊天、工单或日志中的 SMTP 授权码都应在上线前重新生成。
+
+用户上传文件曾出现在早期 Git 提交中。当前版本已停止继续跟踪，但如果仓库将公开，需要在公开前使用 `git filter-repo` 或 BFG 清理历史，并重新推送远端；不要在已有协作仓库中未经沟通直接改写历史。
+
+这套配置不包含多副本、高可用、集中日志和自动备份，定位是低流量玩具项目。健康建议仍不能替代专业医疗判断，公开使用前应保留明显免责声明和紧急就医提示。
