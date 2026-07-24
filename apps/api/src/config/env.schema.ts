@@ -19,6 +19,7 @@ export const envSchema = z.object({
   SMTP_SOCKET_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
   ENCRYPTION_KEY: z.string().min(16).optional(),
   ALLOW_CUSTOM_LLM_BASE_URLS: z.enum(["true", "false"]).default("false"),
+  ALLOW_INSECURE_LLM_BASE_URLS: z.enum(["true", "false"]).default("false"),
   LLM_PROVIDER: z.enum(LLM_PROVIDER_IDS).default("mock"),
   LLM_MODEL: z.string().optional(),
   LLM_VISION_ENABLED: z.string().optional(),

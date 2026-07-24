@@ -190,7 +190,10 @@ export class SettingsService {
     } catch {
       throw new BadRequestException('模型服务地址格式无效');
     }
-    if (parsed.protocol !== 'https:') throw new BadRequestException('自定义模型服务地址必须使用 HTTPS');
+    const insecureHttpAllowed = this.config.get<string>('ALLOW_INSECURE_LLM_BASE_URLS') === 'true';
+    if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && insecureHttpAllowed)) {
+      throw new BadRequestException('自定义模型服务地址必须使用 HTTPS，除非生产环境明确启用了 HTTP 地址');
+    }
     if (parsed.username || parsed.password) throw new BadRequestException('模型服务地址不能包含用户名或密码');
 
     const hostname = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();

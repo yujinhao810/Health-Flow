@@ -6,6 +6,7 @@ node_modules
 .env.*.local
 coverage
 run-logs
+migration/
 .DS_Store
 __pycache__/
 *.py[cod]

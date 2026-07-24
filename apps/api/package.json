@@ -12,7 +12,7 @@
     "start": "node dist/main.js",
     "worker": "tsx src/jobs/worker.ts",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test test/auth-password-reset.spec.ts test/rag.spec.ts test/rerank.spec.ts test/rag-evaluation.spec.ts test/chat-file-lifecycle.spec.ts test/diagnosis.spec.ts test/diagnosis-graph.spec.ts test/document-parsing.spec.ts test/skills.spec.ts",
+    "test": "tsx --test test/auth-password-reset.spec.ts test/settings-base-url.spec.ts test/rag.spec.ts test/rerank.spec.ts test/rag-evaluation.spec.ts test/chat-file-lifecycle.spec.ts test/diagnosis.spec.ts test/diagnosis-graph.spec.ts test/document-parsing.spec.ts test/skills.spec.ts",
     "eval:rag": "tsx scripts/evaluate-rag.ts",
     "eval:rag:v2": "tsx scripts/evaluate-rag.ts --dataset rag-standard-v2.json",
     "smoke:api": "tsx scripts/smoke-api.ts",
