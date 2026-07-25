@@ -27,8 +27,7 @@ services:
       retries: 10
 
   document-parser:
-    build:
-      context: ./services/document-parser
+    image: "${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-yujinhao810/health-flow}-document-parser:${IMAGE_TAG:-latest}"
     restart: unless-stopped
     environment:
       PADDLE_PDX_MODEL_SOURCE: BOS
@@ -43,9 +42,7 @@ services:
       start_period: 180s
 
   api:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
+    image: "${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-yujinhao810/health-flow}-api:${IMAGE_TAG:-latest}"
     restart: unless-stopped
     env_file: ${ENV_FILE:-.env.production}
     environment:
@@ -72,9 +69,7 @@ services:
       start_period: 30s
 
   web:
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
+    image: "${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-yujinhao810/health-flow}-web:${IMAGE_TAG:-latest}"
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-8080}:80"

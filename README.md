@@ -249,7 +249,7 @@ Windows 下仓库根目录还提供了 `start-api-3001.cmd` 和 `start-web-5173.
 
 ## 单机生产部署
 
-仓库提供了适合个人或少量用户的单机 Docker Compose 配置。它会启动 Web、API、PostgreSQL、Redis 和文档解析服务，仅 Web 端口对宿主机开放；API 启动前会自动执行已提交的 Prisma migration。
+仓库提供了适合个人或少量用户的单机 Docker Compose 配置。Web、API 和文档解析镜像由 GitHub Actions 构建，生产服务器只拉取镜像，不在服务器上编译源码。Compose 还会启动 PostgreSQL 和 Redis，仅 Web 端口对宿主机开放；API 启动前会自动执行已提交的 Prisma migration。
 
 1. 复制生产环境模板并填写真实值：
 
@@ -257,18 +257,25 @@ Windows 下仓库根目录还提供了 `start-api-3001.cmd` 和 `start-web-5173.
 cp .env.production.example .env.production
 ```
 
-至少需要修改 `POSTGRES_PASSWORD`、`DATABASE_URL`、`JWT_SECRET`、`ENCRYPTION_KEY`、`CORS_ORIGIN`、`WEB_BASE_URL` 和 SMTP 配置。两个密钥应分别使用至少 32 位的随机值，数据库密码需要与 `DATABASE_URL` 中的值一致。QQ 邮箱使用的是 SMTP 授权码，不是网页登录密码。
+至少需要修改 `POSTGRES_PASSWORD`、`DATABASE_URL`、`JWT_SECRET`、`ENCRYPTION_KEY`、`CORS_ORIGIN`、`WEB_BASE_URL` 和 SMTP 配置。两个密钥应分别使用至少 32 位的随机值，数据库密码需要与 `DATABASE_URL` 中的值一致。QQ 邮箱使用的是 SMTP 授权码，不是网页登录密码。镜像默认发布到 `ghcr.io/yujinhao810/health-flow-*`；使用其他仓库时修改 `IMAGE_REGISTRY` 和 `IMAGE_NAMESPACE`。
 
 2. 在云平台、Caddy、Traefik 或负载均衡器上配置域名和 HTTPS，再让它转发到本机 `8080` 端口。应用在生产模式下会拒绝 HTTP 的公开 URL。
 
-3. 构建并启动：
+3. 将代码推送到 `main`，等待 GitHub Actions 的 `Build production images` 工作流成功。GHCR 镜像为私有时，在服务器登录一次（密码使用具有 `read:packages` 权限的 GitHub Token）：
 
 ```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+docker login ghcr.io -u 你的GitHub用户名
+```
+
+4. 在服务器拉取镜像并启动：
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml pull
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --no-build
 docker compose --env-file .env.production -f docker-compose.prod.yml ps
 ```
 
-4. 检查服务：
+5. 检查服务：
 
 ```bash
 curl https://你的域名/api/healthz/live
@@ -279,17 +286,18 @@ curl https://你的域名/api/healthz/ready
 
 ### 更新已有生产部署
 
-先在本地完成测试、提交并推送，再登录服务器更新。服务器项目目录中执行：
+先在本地完成测试、提交并推送，等待 `Build production images` 工作流全部成功，再登录服务器更新。服务器不需要执行 `git pull`，只要保留最新的 `docker-compose.prod.yml` 和原有 `.env.production`。更新应用服务时执行：
 
 ```bash
-git status --short
-git pull --ff-only origin main
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env.production -f docker-compose.prod.yml pull api web document-parser
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --no-build api web document-parser
 docker compose --env-file .env.production -f docker-compose.prod.yml ps
 docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail=100 api web
 ```
 
-API 容器启动前会自动运行 `prisma migrate deploy`。部署前应先备份 PostgreSQL；如果服务器的 `git status --short` 有未提交改动，先停止更新并确认这些改动的来源，不要使用 `git reset --hard` 覆盖。
+需要回滚时，把 `.env.production` 的 `IMAGE_TAG` 改成目标提交的完整 Git SHA，再重新执行上述 `pull` 和 `up`。API 容器启动前会自动运行 `prisma migrate deploy`。部署前应先备份 PostgreSQL；`postgres_prod_data`、`redis_prod_data`、`api_prod_storage` 等命名卷不会因应用镜像更新而被替换。不要执行 `docker compose down -v`。
+
+如果服务器无法访问 GitHub 源码站，可从本地用 `scp docker-compose.prod.yml 用户名@服务器IP:/opt/healthflow/` 单独更新 Compose 文件。若服务器也无法访问 GHCR，可在 GitHub 仓库 Variables 中设置 `IMAGE_REGISTRY` 和 `IMAGE_NAMESPACE` 指向阿里云 ACR，并在 Secrets 中设置 `REGISTRY_USERNAME`、`REGISTRY_PASSWORD`；服务器 `.env.production` 使用相同的两个镜像地址配置即可。
 
 上线后的最低维护要求：定期备份 `postgres_prod_data` 和 `api_prod_storage`，更新依赖并运行 `corepack pnpm audit --prod`。个人 QQ 邮箱适合当前低流量项目；如果以后公开推广，建议改用域名邮箱服务并配置 SPF、DKIM、DMARC。任何曾粘贴到聊天、工单或日志中的 SMTP 授权码都应在上线前重新生成。
 
