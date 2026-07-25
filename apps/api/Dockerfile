@@ -15,7 +15,8 @@ RUN corepack pnpm install --frozen-lockfile
 
 COPY apps/api apps/api
 COPY packages/contracts packages/contracts
-RUN corepack pnpm --filter @health/shared --filter api run build
+RUN corepack pnpm --filter api prisma:generate \
+    && corepack pnpm --filter @health/shared --filter api run build
 
 ENV NODE_ENV=production
 EXPOSE 3001
