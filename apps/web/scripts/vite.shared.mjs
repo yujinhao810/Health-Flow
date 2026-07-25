@@ -18,6 +18,8 @@ const baseConfig = {
   },
 };
 
+const minifyBuild = process.env.WEB_BUILD_MINIFY !== 'false';
+
 export async function createWebServer(port = Number(process.env.WEB_PORT || 5173)) {
   const server = await createServer({
     ...baseConfig,
@@ -49,6 +51,8 @@ export async function buildWeb() {
     build: {
       outDir: resolve(webRoot, 'dist'),
       emptyOutDir: true,
+      minify: minifyBuild ? 'esbuild' : false,
+      reportCompressedSize: false,
     },
   });
 }

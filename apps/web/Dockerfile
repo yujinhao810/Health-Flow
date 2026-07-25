@@ -11,7 +11,7 @@ RUN corepack pnpm install --frozen-lockfile
 
 COPY apps/web apps/web
 COPY packages/contracts packages/contracts
-RUN corepack pnpm --filter web run build
+RUN WEB_BUILD_MINIFY=false NODE_OPTIONS=--max-old-space-size=768 corepack pnpm --filter web run build
 
 FROM nginx:1.27-alpine
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
