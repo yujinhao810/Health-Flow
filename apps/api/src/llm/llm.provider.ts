@@ -7,15 +7,15 @@ export class LlmService {
   constructor(private readonly providerFactory: ProviderFactory) {}
 
   validate(config: LlmConfig) {
-    return this.providerFactory.get(config.provider).validate(config);
+    return this.providerFactory.get(config.provider, config.apiProtocol).validate(config);
   }
 
   supportsToolUse(config: LlmConfig) {
-    return this.providerFactory.get(config.provider).capabilities.supportsToolUse;
+    return this.providerFactory.get(config.provider, config.apiProtocol).capabilities.supportsToolUse;
   }
 
   supportsEmbeddings(config: LlmConfig) {
-    return this.providerFactory.get(config.provider).capabilities.supportsEmbeddings;
+    return this.providerFactory.get(config.provider, config.apiProtocol).capabilities.supportsEmbeddings;
   }
 
   supportsVision(config: LlmConfig) {
@@ -23,11 +23,11 @@ export class LlmService {
   }
 
   streamChat(request: LlmStreamRequest) {
-    return this.providerFactory.get(request.config.provider).streamChat(request);
+    return this.providerFactory.get(request.config.provider, request.config.apiProtocol).streamChat(request);
   }
 
   streamChatWithTools(request: LlmToolStreamRequest) {
-    const provider = this.providerFactory.get(request.config.provider);
+    const provider = this.providerFactory.get(request.config.provider, request.config.apiProtocol);
     if (!provider.streamChatWithTools) {
       throw new Error('当前模型提供商暂不支持工具调用');
     }
@@ -35,7 +35,7 @@ export class LlmService {
   }
 
   embedTexts(request: LlmEmbeddingRequest) {
-    const provider = this.providerFactory.get(request.config.provider);
+    const provider = this.providerFactory.get(request.config.provider, request.config.apiProtocol);
     if (!provider.embedTexts) {
       throw new Error('当前模型提供商暂不支持 Embedding API');
     }
@@ -43,7 +43,7 @@ export class LlmService {
   }
 
   generateStructured<T = unknown>(request: LlmStructuredRequest) {
-    return this.providerFactory.get(request.config.provider).generateStructured<T>(request);
+    return this.providerFactory.get(request.config.provider, request.config.apiProtocol).generateStructured<T>(request);
   }
 }
 

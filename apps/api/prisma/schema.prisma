@@ -108,6 +108,7 @@ model UserLlmConfig {
   userId             String
   provider           String
   model              String
+  apiProtocol        String   @default("chat_completions")
   diagnosisWesternModel    String?
   diagnosisTcmModel        String?
   diagnosisReviewerModel   String?

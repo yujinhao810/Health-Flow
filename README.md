@@ -142,12 +142,28 @@ mock, ollama, anthropic, openai, google, mistral, cohere, groq, xai,
 openrouter, deepseek, moonshot, qwen, zhipu, baidu, tencent, volcengine
 ```
 
-除 Anthropic 外，多数供应商走 OpenAI-compatible `/chat/completions` 协议。你可以在“模型设置”页面填写 API Key 和 Base URL，也可以通过环境变量配置，例如：
+除 Anthropic 外，多数供应商使用 OpenAI-compatible adapter，并可在“模型设置”页面选择以下协议：
+
+- `Chat Completions`：请求 `${Base URL}/chat/completions`
+- `Responses API`：请求 `${Base URL}/responses`，适用于 Codex 类中转站和 Responses 兼容服务
+
+API Key、Base URL 和协议也可以通过环境变量配置，例如：
 
 ```env
 LLM_PROVIDER=deepseek
 LLM_MODEL=deepseek-chat
+LLM_API_PROTOCOL=chat_completions
 DEEPSEEK_API_KEY=你的_key
+```
+
+Codex 类 Responses 中转站示例：
+
+```env
+LLM_PROVIDER=openai
+LLM_MODEL=中转站提供的模型_ID
+LLM_API_PROTOCOL=responses
+OPENAI_BASE_URL=https://relay.example.com
+OPENAI_API_KEY=你的_key
 ```
 
 本地 Ollama 示例：
@@ -260,6 +276,20 @@ curl https://你的域名/api/healthz/ready
 ```
 
 如需首个管理员，可在第一次部署时同时设置 `ADMIN_EMAIL` 和至少 12 位的 `ADMIN_PASSWORD`。账号只会在不存在时创建，不会覆盖已有账号；创建成功后应从 `.env.production` 删除 `ADMIN_PASSWORD` 并重新部署。普通使用也可以直接注册，不必创建管理员。
+
+### 更新已有生产部署
+
+先在本地完成测试、提交并推送，再登录服务器更新。服务器项目目录中执行：
+
+```bash
+git status --short
+git pull --ff-only origin main
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env.production -f docker-compose.prod.yml ps
+docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail=100 api web
+```
+
+API 容器启动前会自动运行 `prisma migrate deploy`。部署前应先备份 PostgreSQL；如果服务器的 `git status --short` 有未提交改动，先停止更新并确认这些改动的来源，不要使用 `git reset --hard` 覆盖。
 
 上线后的最低维护要求：定期备份 `postgres_prod_data` 和 `api_prod_storage`，更新依赖并运行 `corepack pnpm audit --prod`。个人 QQ 邮箱适合当前低流量项目；如果以后公开推广，建议改用域名邮箱服务并配置 SPF、DKIM、DMARC。任何曾粘贴到聊天、工单或日志中的 SMTP 授权码都应在上线前重新生成。
 

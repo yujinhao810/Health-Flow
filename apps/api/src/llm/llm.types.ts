@@ -1,6 +1,6 @@
-import type { LlmProviderName, LlmValidationResult } from '@health/shared';
+import type { LlmApiProtocol, LlmProviderName, LlmValidationResult } from '@health/shared';
 
-export type { LlmProviderName, LlmValidationResult };
+export type { LlmApiProtocol, LlmProviderName, LlmValidationResult };
 
 export type LlmTextBlock = {
   type: 'text';
@@ -43,6 +43,7 @@ export type LlmMessage = {
 export type LlmConfig = {
   provider: LlmProviderName;
   model: string;
+  apiProtocol?: LlmApiProtocol;
   diagnosisWesternModel?: string;
   diagnosisTcmModel?: string;
   diagnosisReviewerModel?: string;

@@ -36,6 +36,7 @@ export class SettingsService {
       return {
         provider,
         model: saved.model,
+        apiProtocol: normalizeApiProtocol(saved.apiProtocol),
         diagnosisWesternModel: saved.diagnosisWesternModel ?? undefined,
         diagnosisTcmModel: saved.diagnosisTcmModel ?? undefined,
         diagnosisReviewerModel: saved.diagnosisReviewerModel ?? undefined,
@@ -55,6 +56,7 @@ export class SettingsService {
     return {
       provider,
       model: this.config.get<string>('LLM_MODEL') || this.getDefaultModel(provider),
+      apiProtocol: normalizeApiProtocol(this.config.get<string>('LLM_API_PROTOCOL')),
       apiKey: this.getProviderApiKey(provider),
       baseUrl: this.resolveBaseUrl(provider),
       embeddingApiKey: this.config.get<string>('EMBEDDING_API_KEY'),
@@ -78,6 +80,7 @@ export class SettingsService {
       return {
         provider: saved.provider,
         model: saved.model,
+        apiProtocol: normalizeApiProtocol(saved.apiProtocol),
         diagnosisWesternModel: saved.diagnosisWesternModel ?? undefined,
         diagnosisTcmModel: saved.diagnosisTcmModel ?? undefined,
         diagnosisReviewerModel: saved.diagnosisReviewerModel ?? undefined,
@@ -95,6 +98,7 @@ export class SettingsService {
     return {
       provider: config.provider,
       model: config.model,
+      apiProtocol: config.apiProtocol ?? 'chat_completions',
       diagnosisWesternModel: config.diagnosisWesternModel,
       diagnosisTcmModel: config.diagnosisTcmModel,
       diagnosisReviewerModel: config.diagnosisReviewerModel,
@@ -158,6 +162,7 @@ export class SettingsService {
         userId: user.id,
         provider: config.provider,
         model: config.model,
+        apiProtocol: config.apiProtocol ?? 'chat_completions',
         diagnosisWesternModel: normalizeOptionalModel(config.diagnosisWesternModel),
         diagnosisTcmModel: normalizeOptionalModel(config.diagnosisTcmModel),
         diagnosisReviewerModel: normalizeOptionalModel(config.diagnosisReviewerModel),
@@ -270,6 +275,10 @@ function normalizeApiKey(apiKey?: string) {
 
 function normalizeOptionalModel(value: string | undefined) {
   return value?.trim() || null;
+}
+
+function normalizeApiProtocol(value?: string): LlmConfig['apiProtocol'] {
+  return value === 'responses' ? 'responses' : 'chat_completions';
 }
 
 function normalizeBaseUrl(baseUrl?: string) {

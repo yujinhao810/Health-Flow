@@ -233,6 +233,10 @@ export type LlmProviderName = keyof typeof LLM_PROVIDER_METADATA;
 export type LlmProviderAdapter = (typeof LLM_PROVIDER_METADATA)[LlmProviderName]['adapter'];
 export type LlmProviderCategory = (typeof LLM_PROVIDER_METADATA)[LlmProviderName]['category'];
 
+export const LLM_API_PROTOCOLS = ['chat_completions', 'responses'] as const;
+export type LlmApiProtocol = (typeof LLM_API_PROTOCOLS)[number];
+export const llmApiProtocolSchema = z.enum(LLM_API_PROTOCOLS);
+
 export const llmProviderSchema = z.enum(LLM_PROVIDER_IDS);
 
 export const llmConfigSchema = z.object({
@@ -244,6 +248,7 @@ export const llmConfigSchema = z.object({
   diagnosisIntegratorModel: z.string().min(1).optional(),
   apiKey: z.string().min(1).optional(),
   baseUrl: z.string().url().optional().or(z.literal('')),
+  apiProtocol: llmApiProtocolSchema.optional(),
   ragEnabled: z.boolean().optional(),
   ragTopK: z.coerce.number().int().min(1).max(10).optional(),
   visionEnabled: z.boolean().optional(),
@@ -262,6 +267,7 @@ export type LlmConfigInput = z.infer<typeof llmConfigSchema>;
 export type PublicLlmConfig = {
   provider: LlmProviderName;
   model: string;
+  apiProtocol: LlmApiProtocol;
   diagnosisWesternModel?: string;
   diagnosisTcmModel?: string;
   diagnosisReviewerModel?: string;

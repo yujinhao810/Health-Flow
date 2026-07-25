@@ -4,6 +4,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Segmented,
   Select,
   Space,
   Switch,
@@ -43,6 +44,7 @@ export function ModelConfigTab() {
   const config = useQuery({ queryKey: ["llm-config"], queryFn: getLlmConfig });
   const provider = Form.useWatch("provider", form) ?? "mock";
   const baseModel = Form.useWatch("model", form);
+  const apiProtocol = Form.useWatch("apiProtocol", form) ?? "chat_completions";
   const providerMeta = LLM_PROVIDER_METADATA[provider as LlmProviderName];
   const defaultBaseUrl =
     "defaultBaseUrl" in providerMeta ? providerMeta.defaultBaseUrl : undefined;
@@ -52,6 +54,7 @@ export function ModelConfigTab() {
     form.setFieldsValue({
       provider: config.data.provider,
       model: config.data.model,
+      apiProtocol: config.data.apiProtocol ?? "chat_completions",
       diagnosisWesternModel: config.data.diagnosisWesternModel,
       diagnosisTcmModel: config.data.diagnosisTcmModel,
       diagnosisReviewerModel: config.data.diagnosisReviewerModel,
@@ -108,6 +111,12 @@ export function ModelConfigTab() {
         : undefined;
     form.setFieldValue("model", "");
     form.setFieldValue("baseUrl", nextDefaultBaseUrl);
+    form.setFieldValue(
+      "apiProtocol",
+      nextProviderMeta.adapter === "openai-compatible"
+        ? "chat_completions"
+        : undefined,
+    );
     form.setFieldValue("apiKey", undefined);
   }
 
@@ -120,6 +129,7 @@ export function ModelConfigTab() {
         initialValues={{
           provider: "mock",
           model: "mock-health-assistant",
+          apiProtocol: "chat_completions",
           ragTopK: 5,
           visionEnabled: false,
         }}
@@ -143,6 +153,22 @@ export function ModelConfigTab() {
         >
           <Input placeholder={providerMeta.defaultModel} />
         </Form.Item>
+        {providerMeta.adapter === "openai-compatible" ? (
+          <Form.Item
+            name="apiProtocol"
+            label="API 协议"
+            rules={[{ required: true }]}
+            extra="Codex 类中转站通常使用 Responses API；传统 OpenAI 兼容服务通常使用 Chat Completions。"
+          >
+            <Segmented
+              block
+              options={[
+                { label: "Responses API", value: "responses" },
+                { label: "Chat Completions", value: "chat_completions" },
+              ]}
+            />
+          </Form.Item>
+        ) : null}
         <Form.Item
           name="baseUrl"
           label="Base URL"
@@ -153,7 +179,9 @@ export function ModelConfigTab() {
           extra={
             provider === "mock"
               ? "Mock 本地模拟无需 Base URL。"
-              : "模型服务的 API 地址。"
+              : providerMeta.adapter === "openai-compatible"
+                ? `模型服务的 API 地址，系统将在其后请求 ${apiProtocol === "responses" ? "/responses" : "/chat/completions"}。`
+                : "模型服务的 API 地址。"
           }
         >
           <Input

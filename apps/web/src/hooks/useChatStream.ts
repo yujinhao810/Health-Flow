@@ -172,10 +172,25 @@ export function useChatStream() {
             setWarning(message);
           },
           onDone: (fullText) => {
+            const normalizedText = fullText?.trim();
+            if (!normalizedText) {
+              const emptyResponseMessage = '模型服务未返回可显示的内容，请检查所选 API 协议。';
+              setError(emptyResponseMessage);
+              setMessages((current) =>
+                current.map((message) =>
+                  message.id === streamingId
+                    ? { ...message, content: `出错了：${emptyResponseMessage}`, status: 'error' }
+                    : message,
+                ),
+              );
+              setStreaming(false);
+              abortRef.current = null;
+              return;
+            }
             setMessages((current) =>
               current.map((message) =>
                 message.id === streamingId
-                  ? { ...message, content: message.content || fullText || '我在这里陪着你。', status: undefined }
+                  ? { ...message, content: message.content || normalizedText, status: undefined }
                   : message,
               ),
             );

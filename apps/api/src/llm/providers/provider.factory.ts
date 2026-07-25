@@ -4,6 +4,7 @@ import { LlmProvider, LlmProviderName } from '../llm.types';
 import { AnthropicProvider } from './anthropic.provider';
 import { MockProvider } from './mock.provider';
 import { OpenAiCompatibleProvider } from './openai-compatible.provider';
+import { OpenAiResponsesProvider } from './openai-responses.provider';
 
 @Injectable()
 export class ProviderFactory {
@@ -11,13 +12,16 @@ export class ProviderFactory {
     private readonly mockProvider: MockProvider,
     private readonly anthropicProvider: AnthropicProvider,
     private readonly openAiCompatibleProvider: OpenAiCompatibleProvider,
+    private readonly openAiResponsesProvider: OpenAiResponsesProvider,
   ) {}
 
-  get(provider: LlmProviderName): LlmProvider {
+  get(provider: LlmProviderName, apiProtocol: 'chat_completions' | 'responses' = 'chat_completions'): LlmProvider {
     const adapter = LLM_PROVIDER_METADATA[provider].adapter;
     if (adapter === 'mock') return this.mockProvider;
     if (adapter === 'anthropic') return this.anthropicProvider;
-    if (adapter === 'openai-compatible') return this.openAiCompatibleProvider;
+    if (adapter === 'openai-compatible') {
+      return apiProtocol === 'responses' ? this.openAiResponsesProvider : this.openAiCompatibleProvider;
+    }
     throw new Error(`Unsupported LLM provider: ${provider}`);
   }
 }

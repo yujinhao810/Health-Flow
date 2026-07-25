@@ -53,6 +53,7 @@ function parseLlmConfig(body: unknown): LlmConfig {
 
   return {
     ...parsed.data,
+    apiProtocol: parsed.data.apiProtocol ?? 'chat_completions',
     apiKey: normalizeApiKey(parsed.data.apiKey),
     baseUrl: parsed.data.baseUrl || undefined,
   };

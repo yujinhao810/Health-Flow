@@ -67,17 +67,26 @@ export class OpenAiCompatibleProvider implements LlmProvider {
         {
           model: config.model,
           stream: false,
-          max_tokens: 1,
+          max_tokens: 16,
           messages: [{ role: "user", content: "ping" }],
         },
         AbortSignal.timeout(15000),
       );
 
-      if (!response.ok) {
-        return { valid: false, message: await formatHttpError(response) };
-      }
+    if (!response.ok) {
+      return { valid: false, message: await formatHttpError(response) };
+    }
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    if (!payload.choices?.[0]?.message?.content?.trim()) {
+      return {
+        valid: false,
+        message: "连接成功，但返回内容不是有效的 Chat Completions 响应",
+      };
+    }
 
-      return { valid: true, message: "连接验证成功" };
+    return { valid: true, message: "Chat Completions 连接验证成功" };
     } catch (error) {
       return { valid: false, message: formatUnknownError(error) };
     }
@@ -145,6 +154,12 @@ export class OpenAiCompatibleProvider implements LlmProvider {
         inputTokens = chunk.usage?.prompt_tokens ?? inputTokens;
         outputTokens = chunk.usage?.completion_tokens ?? outputTokens;
       }
+    }
+
+    if (!fullText.trim()) {
+      throw new Error(
+        "模型服务返回成功，但流中没有 Chat Completions 文本；请检查 API 协议是否应选择 Responses",
+      );
     }
 
     yield { type: "usage", inputTokens, outputTokens };
@@ -271,6 +286,12 @@ export class OpenAiCompatibleProvider implements LlmProvider {
         name: call.name,
         input: parseToolArguments(call.arguments),
       });
+    }
+
+    if (!content.length) {
+      throw new Error(
+        "模型服务返回成功，但流中没有 Chat Completions 内容；请检查 API 协议是否应选择 Responses",
+      );
     }
 
     yield {
@@ -445,7 +466,7 @@ export class OpenAiCompatibleProvider implements LlmProvider {
     });
   }
 
-  private async fetchProviderEndpoint(
+  protected async fetchProviderEndpoint(
     config: LlmConfig,
     path: string,
     body: Record<string, unknown>,
@@ -490,7 +511,7 @@ function trimTrailingSlash(value?: string) {
   return value?.replace(/\/+$/, "");
 }
 
-function buildStructuredSystemPrompt(system: string, schema: unknown) {
+export function buildStructuredSystemPrompt(system: string, schema: unknown) {
   return [
     system,
     "你必须只返回一个合法 JSON 对象，不要包含 Markdown、代码块、解释性前后缀或额外文本。",
@@ -615,7 +636,7 @@ function defaultEmbeddingModel(provider: LlmConfig["provider"]) {
   return defaults[provider] ?? "text-embedding-3-small";
 }
 
-function structuredMaxTokenAttempts(
+export function structuredMaxTokenAttempts(
   provider: LlmConfig["provider"],
   requestedMax?: number,
 ) {
@@ -628,7 +649,7 @@ function structuredMaxTokenAttempts(
   return [8192, 4096, 2048];
 }
 
-function isMaxTokensError(message: string) {
+export function isMaxTokensError(message: string) {
   return /max[_\s-]?(?:completion[_\s-]?)?tokens?|output tokens?|maximum|too large|exceed|range|token.*limit|最大|输出.*token|超出|超过/i.test(
     message,
   );
@@ -642,7 +663,7 @@ function parseProviderChunk(payload: string) {
   }
 }
 
-function parseJsonPayload<T>(rawText: string): T {
+export function parseJsonPayload<T>(rawText: string): T {
   try {
     return JSON.parse(rawText) as T;
   } catch {
@@ -665,7 +686,7 @@ function parseSsePayloads(block: string) {
     .filter(Boolean);
 }
 
-async function formatHttpError(response: Response) {
+export async function formatHttpError(response: Response) {
   const body = await response.text();
   const detail =
     safeJsonMessage(body) || body.slice(0, 300) || response.statusText;
@@ -690,7 +711,7 @@ function safeJsonMessage(body: string) {
   }
 }
 
-function formatUnknownError(error: unknown) {
+export function formatUnknownError(error: unknown) {
   if (error instanceof Error) {
     if (error.name === "AbortError" || error.name === "TimeoutError") {
       return "连接超时：后端在 15 秒内没有连上模型服务，请检查网络、代理或 Base URL。";
