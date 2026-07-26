@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { LlmConfig } from '../src/llm/llm.types';
-import { OpenAiCompatibleProvider } from '../src/llm/providers/openai-compatible.provider';
+import { formatHttpError, OpenAiCompatibleProvider } from '../src/llm/providers/openai-compatible.provider';
 import { OpenAiResponsesProvider } from '../src/llm/providers/openai-responses.provider';
 
 const config: LlmConfig = {
@@ -79,9 +79,7 @@ test('Responses text stream emits deltas, usage and a complete answer', async ()
   ]);
   assert.equal(provider.requests[0]?.body.stream, true);
   assert.equal(provider.requests[0]?.body.instructions, 'system prompt');
-  assert.deepEqual(provider.requests[0]?.body.input, [
-    { role: 'user', content: '你好' },
-  ]);
+  assert.deepEqual(provider.requests[0]?.body.input, [{ role: 'user', content: '你好' }]);
 });
 
 test('Responses tool stream converts function calls to the shared agent format', async () => {
@@ -94,9 +92,22 @@ test('Responses tool stream converts function calls to the shared agent format',
   };
   const provider = new StubResponsesProvider([
     sseResponse([
-      { type: 'response.output_item.added', output_index: 0, item: { ...functionCall, arguments: '' } },
-      { type: 'response.function_call_arguments.delta', item_id: 'item_1', output_index: 0, delta: '{"days":7}' },
-      { type: 'response.output_item.done', output_index: 0, item: functionCall },
+      {
+        type: 'response.output_item.added',
+        output_index: 0,
+        item: { ...functionCall, arguments: '' },
+      },
+      {
+        type: 'response.function_call_arguments.delta',
+        item_id: 'item_1',
+        output_index: 0,
+        delta: '{"days":7}',
+      },
+      {
+        type: 'response.output_item.done',
+        output_index: 0,
+        item: functionCall,
+      },
       {
         type: 'response.completed',
         response: {
@@ -165,7 +176,18 @@ test('Responses structured output reads output_text JSON', async () => {
     schemaName: 'status_result',
     schema: {
       type: 'object',
-      properties: { ok: { type: 'boolean' } },
+      properties: {
+        ok: { type: 'boolean' },
+        note: { type: 'string' },
+        details: {
+          type: 'object',
+          properties: {
+            value: { type: 'string' },
+            source: { type: 'string' },
+          },
+          required: ['value'],
+        },
+      },
       required: ['ok'],
       additionalProperties: false,
     },
@@ -173,10 +195,83 @@ test('Responses structured output reads output_text JSON', async () => {
 
   assert.deepEqual(result.parsed, { ok: true });
   assert.deepEqual(result.usage, { inputTokens: 10, outputTokens: 4 });
-  assert.equal(
-    (provider.requests[0]?.body.text as { format?: { type?: string } }).format?.type,
-    'json_schema',
-  );
+  assert.equal((provider.requests[0]?.body.text as { format?: { type?: string } }).format?.type, 'json_schema');
+  const sentSchema = (
+    provider.requests[0]?.body.text as {
+      format?: {
+        schema?: {
+          required?: string[];
+          properties?: {
+            details?: { required?: string[]; additionalProperties?: boolean };
+          };
+        };
+      };
+    }
+  ).format?.schema;
+  assert.deepEqual(sentSchema?.required, ['ok', 'note', 'details']);
+  assert.deepEqual(sentSchema?.properties?.details?.required, ['value', 'source']);
+  assert.equal(sentSchema?.properties?.details?.additionalProperties, false);
+});
+
+test('Responses structured output retries a transient gateway failure with the same format', async () => {
+  const provider = new StubResponsesProvider([
+    htmlResponse(502, { 'Retry-After': '0' }),
+    jsonResponse({
+      status: 'completed',
+      output: [
+        {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: '{"ok":true}' }],
+        },
+      ],
+    }),
+  ]);
+
+  const result = await provider.generateStructured<{ ok: boolean }>({
+    config,
+    system: 'Return JSON',
+    messages: [{ role: 'user', content: 'status' }],
+    schemaName: 'retry_result',
+    schema: {
+      type: 'object',
+      properties: { ok: { type: 'boolean' } },
+      required: ['ok'],
+      additionalProperties: false,
+    },
+    maxOutputTokens: 512,
+  });
+
+  assert.deepEqual(result.parsed, { ok: true });
+  assert.equal(provider.requests.length, 2);
+  assert.equal((provider.requests[0]?.body.text as { format?: { type?: string } }).format?.type, 'json_schema');
+  assert.equal((provider.requests[1]?.body.text as { format?: { type?: string } }).format?.type, 'json_schema');
+});
+
+test('Responses structured output serializes calls to the same custom relay', async () => {
+  const provider = new ConcurrentResponsesProvider();
+  const request = (schemaName: string) =>
+    provider.generateStructured<{ ok: boolean }>({
+      config,
+      system: 'Return JSON',
+      messages: [{ role: 'user', content: 'status' }],
+      schemaName,
+      schema: {
+        type: 'object',
+        properties: { ok: { type: 'boolean' } },
+        required: ['ok'],
+        additionalProperties: false,
+      },
+    });
+
+  await Promise.all([request('western_assessment'), request('tcm_assessment')]);
+  assert.equal(provider.maximumConcurrentRequests, 1);
+});
+
+test('HTML gateway errors are summarized without leaking the response page', async () => {
+  const message = await formatHttpError(htmlResponse(502));
+  assert.equal(message, '模型服务暂时不可用（HTTP 502）：上游网关返回了 HTML 错误页');
+  assert.doesNotMatch(message, /DOCTYPE|<html/i);
 });
 
 test('Chat Completions validation rejects an unrelated successful response', async () => {
@@ -194,11 +289,7 @@ class StubResponsesProvider extends OpenAiResponsesProvider {
     super();
   }
 
-  protected async fetchProviderEndpoint(
-    _config: LlmConfig,
-    path: string,
-    body: Record<string, unknown>,
-  ) {
+  protected async fetchProviderEndpoint(_config: LlmConfig, path: string, body: Record<string, unknown>) {
     this.requests.push({ path, body });
     const response = this.responses.shift();
     if (!response) throw new Error('Missing stub response');
@@ -218,10 +309,39 @@ class StubChatProvider extends OpenAiCompatibleProvider {
   }
 }
 
+class ConcurrentResponsesProvider extends OpenAiResponsesProvider {
+  private concurrentRequests = 0;
+  maximumConcurrentRequests = 0;
+
+  protected async fetchProviderEndpoint() {
+    this.concurrentRequests += 1;
+    this.maximumConcurrentRequests = Math.max(this.maximumConcurrentRequests, this.concurrentRequests);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    this.concurrentRequests -= 1;
+    return jsonResponse({
+      status: 'completed',
+      output: [
+        {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: '{"ok":true}' }],
+        },
+      ],
+    });
+  }
+}
+
 function jsonResponse(payload: unknown) {
   return new Response(JSON.stringify(payload), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function htmlResponse(status: number, headers?: Record<string, string>) {
+  return new Response('<!DOCTYPE html><html><title>Bad gateway</title></html>', {
+    status,
+    headers: { 'Content-Type': 'text/html', ...headers },
   });
 }
 

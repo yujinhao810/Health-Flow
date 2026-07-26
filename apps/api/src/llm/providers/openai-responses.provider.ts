@@ -25,9 +25,7 @@ type ResponsesUsage = {
   output_tokens?: number;
 };
 
-type ResponsesContent =
-  | { type: "output_text"; text?: string }
-  | { type: "refusal"; refusal?: string };
+type ResponsesContent = { type: "output_text"; text?: string } | { type: "refusal"; refusal?: string };
 
 type ResponsesOutputItem =
   | {
@@ -65,12 +63,7 @@ type ResponsesStreamEvent = {
 type ResponsesInputItem =
   | {
       role: "system" | "user" | "assistant";
-      content:
-        | string
-        | Array<
-            | { type: "input_text"; text: string }
-            | { type: "input_image"; image_url: string }
-          >;
+      content: string | Array<{ type: "input_text"; text: string } | { type: "input_image"; image_url: string }>;
     }
   | {
       type: "function_call";
@@ -84,8 +77,12 @@ type ResponsesInputItem =
       output: string;
     };
 
+const STRUCTURED_TRANSIENT_RETRY_DELAYS_MS = [350, 900] as const;
+
 @Injectable()
 export class OpenAiResponsesProvider extends OpenAiCompatibleProvider {
+  private readonly customRelayStructuredTails = new Map<string, Promise<void>>();
+
   async validate(config: LlmConfig) {
     try {
       const response = await this.fetchResponses(
@@ -161,9 +158,7 @@ export class OpenAiResponsesProvider extends OpenAiCompatibleProvider {
     yield { type: "done", fullText };
   }
 
-  async *streamChatWithTools(
-    request: LlmToolStreamRequest,
-  ): AsyncIterable<LlmToolStreamEvent> {
+  async *streamChatWithTools(request: LlmToolStreamRequest): AsyncIterable<LlmToolStreamEvent> {
     const response = await this.fetchResponses(
       request.config,
       buildResponsesBody(request, {
@@ -192,11 +187,7 @@ export class OpenAiResponsesProvider extends OpenAiCompatibleProvider {
         yield { type: "delta", text: event.delta };
       }
 
-      if (
-        (event.type === "response.output_item.added" ||
-          event.type === "response.output_item.done") &&
-        event.item
-      ) {
+      if ((event.type === "response.output_item.added" || event.type === "response.output_item.done") && event.item) {
         const key = responseItemKey(event.item, event);
         streamedItems.set(key, mergeResponseItem(streamedItems.get(key), event.item));
         if (event.item.type === "function_call") {
@@ -208,10 +199,7 @@ export class OpenAiResponsesProvider extends OpenAiCompatibleProvider {
         }
       }
 
-      if (
-        event.type === "response.function_call_arguments.delta" &&
-        event.delta
-      ) {
+      if (event.type === "response.function_call_arguments.delta" && event.delta) {
         const key = event.item_id || `output_${event.output_index ?? 0}`;
         const current = streamedItems.get(key);
         if (current?.type === "function_call") {
@@ -255,6 +243,11 @@ export class OpenAiResponsesProvider extends OpenAiCompatibleProvider {
   }
 
   async generateStructured<T = unknown>(request: LlmStructuredRequest) {
+    return this.withCustomRelayStructuredSlot(request, () => this.generateStructuredRequest<T>(request));
+  }
+
+  private async generateStructuredRequest<T>(request: LlmStructuredRequest) {
+    const strictSchema = toStrictJsonSchema(request.schema);
     const formats = [
       {
         text: {
@@ -262,7 +255,7 @@ export class OpenAiResponsesProvider extends OpenAiCompatibleProvider {
             type: "json_schema",
             name: request.schemaName,
             strict: true,
-            schema: request.schema,
+            schema: strictSchema,
           },
         },
       },
@@ -270,62 +263,68 @@ export class OpenAiResponsesProvider extends OpenAiCompatibleProvider {
       {},
     ];
     const errors: string[] = [];
-    const maxTokenAttempts = structuredMaxTokenAttempts(
-      request.config.provider,
-      request.maxOutputTokens,
-    );
+    const maxTokenAttempts = structuredMaxTokenAttempts(request.config.provider, request.maxOutputTokens);
 
-    for (const format of formats) {
-      for (let index = 0; index < maxTokenAttempts.length; index += 1) {
-        try {
-          const response = await this.fetchResponses(
-            request.config,
-            {
-              model: request.config.model,
-              stream: false,
-              store: false,
-              instructions: buildStructuredSystemPrompt(request.system, request.schema),
-              input: toResponsesInput(request.messages),
-              max_output_tokens: maxTokenAttempts[index],
-              ...format,
-            },
-            request.signal,
-          );
+    formatAttempt: for (const format of formats) {
+      tokenAttempt: for (let index = 0; index < maxTokenAttempts.length; index += 1) {
+        let transientRetryIndex = 0;
+        while (true) {
+          try {
+            const response = await this.fetchResponses(
+              request.config,
+              {
+                model: request.config.model,
+                stream: false,
+                store: false,
+                instructions: buildStructuredSystemPrompt(request.system, strictSchema),
+                input: toResponsesInput(request.messages),
+                max_output_tokens: maxTokenAttempts[index],
+                ...format,
+              },
+              request.signal,
+            );
 
-          if (!response.ok) {
-            const message = await formatHttpError(response);
-            errors.push(message);
-            if (
-              response.status === 400 &&
-              isMaxTokensError(message) &&
-              index < maxTokenAttempts.length - 1
-            ) {
-              continue;
+            if (!response.ok) {
+              const status = response.status;
+              const retryAfter = response.headers.get("retry-after");
+              const message = await formatHttpError(response);
+              appendUniqueError(errors, message);
+              if (
+                isTransientStructuredStatus(status) &&
+                transientRetryIndex < STRUCTURED_TRANSIENT_RETRY_DELAYS_MS.length
+              ) {
+                await waitForStructuredRetry(transientRetryIndex, request.schemaName, retryAfter, request.signal);
+                transientRetryIndex += 1;
+                continue;
+              }
+              if (status === 400 && isMaxTokensError(message) && index < maxTokenAttempts.length - 1) {
+                continue tokenAttempt;
+              }
+              if (status === 400) continue formatAttempt;
+              throw new Error(message);
             }
-            if (response.status === 400) break;
-            throw new Error(message);
-          }
 
-          const payload = (await response.json()) as ResponsesPayload;
-          assertCompletedResponse(payload);
-          const rawText = extractResponsesText(payload).trim();
-          if (!rawText) {
-            errors.push("Responses API 未返回可解析的结构化内容");
-            break;
-          }
+            const payload = (await response.json()) as ResponsesPayload;
+            assertCompletedResponse(payload);
+            const rawText = extractResponsesText(payload).trim();
+            if (!rawText) {
+              appendUniqueError(errors, "Responses API 未返回可解析的结构化内容");
+              continue formatAttempt;
+            }
 
-          return {
-            parsed: parseJsonPayload<T>(rawText),
-            rawText,
-            usage: {
-              inputTokens: payload.usage?.input_tokens,
-              outputTokens: payload.usage?.output_tokens,
-            },
-          };
-        } catch (error) {
-          if (request.signal?.aborted) throw error;
-          errors.push(error instanceof Error ? error.message : "Responses API 结构化输出失败");
-          break;
+            return {
+              parsed: parseJsonPayload<T>(rawText),
+              rawText,
+              usage: {
+                inputTokens: payload.usage?.input_tokens,
+                outputTokens: payload.usage?.output_tokens,
+              },
+            };
+          } catch (error) {
+            if (request.signal?.aborted) throw error;
+            appendUniqueError(errors, error instanceof Error ? error.message : "Responses API 结构化输出失败");
+            continue formatAttempt;
+          }
         }
       }
     }
@@ -337,19 +336,38 @@ export class OpenAiResponsesProvider extends OpenAiCompatibleProvider {
     return super.embedTexts(request);
   }
 
-  private fetchResponses(
-    config: LlmConfig,
-    body: Record<string, unknown>,
-    signal?: AbortSignal,
-  ) {
+  private async withCustomRelayStructuredSlot<T>(request: LlmStructuredRequest, operation: () => Promise<T>) {
+    const key = customRelayQueueKey(request.config);
+    if (!key) return operation();
+
+    const previous = this.customRelayStructuredTails.get(key) ?? Promise.resolve();
+    let release: () => void = () => undefined;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = previous.catch(() => undefined).then(() => current);
+    this.customRelayStructuredTails.set(key, tail);
+
+    try {
+      await previous.catch(() => undefined);
+      throwIfAborted(request.signal);
+      return await operation();
+    } finally {
+      release();
+      void tail.finally(() => {
+        if (this.customRelayStructuredTails.get(key) === tail) {
+          this.customRelayStructuredTails.delete(key);
+        }
+      });
+    }
+  }
+
+  private fetchResponses(config: LlmConfig, body: Record<string, unknown>, signal?: AbortSignal) {
     return this.fetchProviderEndpoint(config, "/responses", body, signal);
   }
 }
 
-function buildResponsesBody(
-  request: LlmStreamRequest,
-  extra: Record<string, unknown>,
-) {
+function buildResponsesBody(request: LlmStreamRequest, extra: Record<string, unknown>) {
   return {
     model: request.config.model,
     store: false,
@@ -433,10 +451,7 @@ function extractResponsesText(payload: ResponsesPayload) {
     .join("");
 }
 
-function responsesOutputToContent(
-  output: ResponsesOutputItem[],
-  streamedText: string,
-): LlmContentBlock[] {
+function responsesOutputToContent(output: ResponsesOutputItem[], streamedText: string): LlmContentBlock[] {
   const content: LlmContentBlock[] = [];
   const text = streamedText || extractResponsesText({ output });
   if (text.trim()) content.push({ type: "text", text });
@@ -455,20 +470,19 @@ function responsesOutputToContent(
 
 function responseStopReason(output: ResponsesOutputItem[]) {
   if (output.some((item) => item.type === "function_call")) return "tool_use";
-  if (
-    output.some(
-      (item) =>
-        item.type === "message" &&
-        item.content?.some((content) => content.type === "refusal"),
-    )
-  ) {
+  if (output.some((item) => item.type === "message" && item.content?.some((content) => content.type === "refusal"))) {
     return "refusal";
   }
   return "end_turn";
 }
 
 function responseItemKey(item: ResponsesOutputItem, event: ResponsesStreamEvent) {
-  return item.id || (item.type === "function_call" ? item.call_id : undefined) || event.item_id || `output_${event.output_index ?? 0}`;
+  return (
+    item.id ||
+    (item.type === "function_call" ? item.call_id : undefined) ||
+    event.item_id ||
+    `output_${event.output_index ?? 0}`
+  );
 }
 
 function mergeResponseItem(
@@ -507,9 +521,7 @@ function assertCompletedResponse(payload: ResponsesPayload) {
   }
 }
 
-async function* readResponsesStream(
-  response: Response,
-): AsyncIterable<ResponsesStreamEvent> {
+async function* readResponsesStream(response: Response): AsyncIterable<ResponsesStreamEvent> {
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -545,4 +557,86 @@ function parseResponsesEvents(block: string) {
     }
   }
   return events;
+}
+
+function customRelayQueueKey(config: LlmConfig) {
+  if (!config.baseUrl) return undefined;
+  try {
+    const url = new URL(config.baseUrl);
+    if (url.hostname.toLowerCase() === "api.openai.com") return undefined;
+    return `${url.origin}${url.pathname.replace(/\/+$/, "")}|${config.model}`;
+  } catch {
+    return `${config.baseUrl}|${config.model}`;
+  }
+}
+
+function toStrictJsonSchema(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(toStrictJsonSchema);
+  if (!value || typeof value !== "object") return value;
+
+  const source = value as Record<string, unknown>;
+  const normalized = Object.fromEntries(Object.entries(source).map(([key, entry]) => [key, toStrictJsonSchema(entry)]));
+  const properties = normalized.properties;
+  if (normalized.type === "object" && properties && typeof properties === "object" && !Array.isArray(properties)) {
+    normalized.required = Object.keys(properties as Record<string, unknown>);
+    normalized.additionalProperties = false;
+  }
+  return normalized;
+}
+
+function isTransientStructuredStatus(status: number) {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+async function waitForStructuredRetry(
+  retryIndex: number,
+  schemaName: string,
+  retryAfter: string | null,
+  signal?: AbortSignal,
+) {
+  const headerDelay = retryAfterMilliseconds(retryAfter);
+  const baseDelay = STRUCTURED_TRANSIENT_RETRY_DELAYS_MS[retryIndex] ?? 900;
+  const delay = headerDelay ?? baseDelay + (stableHash(schemaName) % 200);
+  if (delay <= 0) {
+    throwIfAborted(signal);
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delay);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortReason(signal));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function retryAfterMilliseconds(value: string | null) {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : undefined;
+}
+
+function stableHash(value: string) {
+  let hash = 0;
+  for (const character of value) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  return hash;
+}
+
+function appendUniqueError(errors: string[], message: string) {
+  if (message && !errors.includes(message)) errors.push(message);
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) throw abortReason(signal);
+}
+
+function abortReason(signal?: AbortSignal) {
+  return signal?.reason instanceof Error ? signal.reason : new Error("Responses API 请求已取消");
 }

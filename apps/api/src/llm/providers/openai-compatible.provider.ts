@@ -688,14 +688,22 @@ function parseSsePayloads(block: string) {
 
 export async function formatHttpError(response: Response) {
   const body = await response.text();
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  const htmlResponse =
+    contentType.includes("text/html") ||
+    /^\s*(?:<!doctype\s+html|<html\b)/i.test(body);
   const detail =
-    safeJsonMessage(body) || body.slice(0, 300) || response.statusText;
+    safeJsonMessage(body) ||
+    (htmlResponse ? "上游网关返回了 HTML 错误页" : body.slice(0, 300)) ||
+    response.statusText;
   if (response.status === 401 || response.status === 403)
     return `认证失败：请检查 API Key 或权限（HTTP ${response.status}）：${detail}`;
   if (response.status === 404)
     return `接口或模型不存在：请检查 Base URL 和模型 ID（HTTP ${response.status}）：${detail}`;
   if (response.status === 429)
     return `额度不足或触发限流（HTTP ${response.status}）：${detail}`;
+  if (response.status >= 500)
+    return `模型服务暂时不可用（HTTP ${response.status}）：${detail}`;
   return `连接验证失败（HTTP ${response.status}）：${detail}`;
 }
 
