@@ -195,7 +195,9 @@ test('Responses structured output reads output_text JSON', async () => {
 
   assert.deepEqual(result.parsed, { ok: true });
   assert.deepEqual(result.usage, { inputTokens: 10, outputTokens: 4 });
+  assert.equal(provider.requests[0]?.body.stream, true);
   assert.equal((provider.requests[0]?.body.text as { format?: { type?: string } }).format?.type, 'json_schema');
+  assert.doesNotMatch(String(provider.requests[0]?.body.instructions), /"properties"/);
   const sentSchema = (
     provider.requests[0]?.body.text as {
       format?: {
@@ -248,24 +250,38 @@ test('Responses structured output retries a transient gateway failure with the s
   assert.equal((provider.requests[1]?.body.text as { format?: { type?: string } }).format?.type, 'json_schema');
 });
 
-test('Responses structured output serializes calls to the same custom relay', async () => {
-  const provider = new ConcurrentResponsesProvider();
-  const request = (schemaName: string) =>
-    provider.generateStructured<{ ok: boolean }>({
-      config,
-      system: 'Return JSON',
-      messages: [{ role: 'user', content: 'status' }],
-      schemaName,
-      schema: {
-        type: 'object',
-        properties: { ok: { type: 'boolean' } },
-        required: ['ok'],
-        additionalProperties: false,
+test('Responses structured output reads streamed custom relay output', async () => {
+  const provider = new StubResponsesProvider([
+    sseResponse([
+      { type: 'response.created', response: { status: 'in_progress' } },
+      { type: 'response.output_text.delta', delta: '{"ok":' },
+      { type: 'response.output_text.delta', delta: 'true}' },
+      {
+        type: 'response.completed',
+        response: {
+          status: 'completed',
+          output: [],
+          usage: { input_tokens: 2, output_tokens: 2 },
+        },
       },
-    });
+    ]),
+  ]);
 
-  await Promise.all([request('western_assessment'), request('tcm_assessment')]);
-  assert.equal(provider.maximumConcurrentRequests, 1);
+  const result = await provider.generateStructured<{ ok: boolean }>({
+    config,
+    system: 'Return JSON',
+    messages: [{ role: 'user', content: 'status' }],
+    schemaName: 'streamed_result',
+    schema: {
+      type: 'object',
+      properties: { ok: { type: 'boolean' } },
+      required: ['ok'],
+      additionalProperties: false,
+    },
+  });
+
+  assert.deepEqual(result.parsed, { ok: true });
+  assert.deepEqual(result.usage, { inputTokens: 2, outputTokens: 2 });
 });
 
 test('HTML gateway errors are summarized without leaking the response page', async () => {
@@ -306,28 +322,6 @@ class StubChatProvider extends OpenAiCompatibleProvider {
     const response = this.responses.shift();
     if (!response) throw new Error('Missing stub response');
     return response;
-  }
-}
-
-class ConcurrentResponsesProvider extends OpenAiResponsesProvider {
-  private concurrentRequests = 0;
-  maximumConcurrentRequests = 0;
-
-  protected async fetchProviderEndpoint() {
-    this.concurrentRequests += 1;
-    this.maximumConcurrentRequests = Math.max(this.maximumConcurrentRequests, this.concurrentRequests);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    this.concurrentRequests -= 1;
-    return jsonResponse({
-      status: 'completed',
-      output: [
-        {
-          type: 'message',
-          role: 'assistant',
-          content: [{ type: 'output_text', text: '{"ok":true}' }],
-        },
-      ],
-    });
   }
 }
 

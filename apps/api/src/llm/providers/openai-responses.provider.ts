@@ -53,6 +53,7 @@ type ResponsesPayload = {
 type ResponsesStreamEvent = {
   type?: string;
   delta?: string;
+  text?: string;
   item_id?: string;
   output_index?: number;
   item?: ResponsesOutputItem;
@@ -81,8 +82,6 @@ const STRUCTURED_TRANSIENT_RETRY_DELAYS_MS = [350, 900] as const;
 
 @Injectable()
 export class OpenAiResponsesProvider extends OpenAiCompatibleProvider {
-  private readonly customRelayStructuredTails = new Map<string, Promise<void>>();
-
   async validate(config: LlmConfig) {
     try {
       const response = await this.fetchResponses(
@@ -243,24 +242,28 @@ export class OpenAiResponsesProvider extends OpenAiCompatibleProvider {
   }
 
   async generateStructured<T = unknown>(request: LlmStructuredRequest) {
-    return this.withCustomRelayStructuredSlot(request, () => this.generateStructuredRequest<T>(request));
-  }
-
-  private async generateStructuredRequest<T>(request: LlmStructuredRequest) {
     const strictSchema = toStrictJsonSchema(request.schema);
+    const fallbackInstructions = buildStructuredSystemPrompt(request.system, strictSchema);
+    const stream = isCustomResponsesRelay(request.config);
     const formats = [
       {
-        text: {
-          format: {
-            type: "json_schema",
-            name: request.schemaName,
-            strict: true,
-            schema: strictSchema,
+        body: {
+          text: {
+            format: {
+              type: "json_schema",
+              name: request.schemaName,
+              strict: true,
+              schema: strictSchema,
+            },
           },
         },
+        instructions: buildStrictResponsesInstructions(request.system),
       },
-      { text: { format: { type: "json_object" } } },
-      {},
+      {
+        body: { text: { format: { type: "json_object" } } },
+        instructions: fallbackInstructions,
+      },
+      { body: {}, instructions: fallbackInstructions },
     ];
     const errors: string[] = [];
     const maxTokenAttempts = structuredMaxTokenAttempts(request.config.provider, request.maxOutputTokens);
@@ -274,12 +277,12 @@ export class OpenAiResponsesProvider extends OpenAiCompatibleProvider {
               request.config,
               {
                 model: request.config.model,
-                stream: false,
+                stream,
                 store: false,
-                instructions: buildStructuredSystemPrompt(request.system, strictSchema),
+                instructions: format.instructions,
                 input: toResponsesInput(request.messages),
                 max_output_tokens: maxTokenAttempts[index],
-                ...format,
+                ...format.body,
               },
               request.signal,
             );
@@ -304,9 +307,10 @@ export class OpenAiResponsesProvider extends OpenAiCompatibleProvider {
               throw new Error(message);
             }
 
-            const payload = (await response.json()) as ResponsesPayload;
+            const structuredResponse = await readStructuredResponse(response, stream);
+            const payload = structuredResponse.payload;
             assertCompletedResponse(payload);
-            const rawText = extractResponsesText(payload).trim();
+            const rawText = structuredResponse.rawText.trim();
             if (!rawText) {
               appendUniqueError(errors, "Responses API 未返回可解析的结构化内容");
               continue formatAttempt;
@@ -334,32 +338,6 @@ export class OpenAiResponsesProvider extends OpenAiCompatibleProvider {
 
   async embedTexts(request: LlmEmbeddingRequest) {
     return super.embedTexts(request);
-  }
-
-  private async withCustomRelayStructuredSlot<T>(request: LlmStructuredRequest, operation: () => Promise<T>) {
-    const key = customRelayQueueKey(request.config);
-    if (!key) return operation();
-
-    const previous = this.customRelayStructuredTails.get(key) ?? Promise.resolve();
-    let release: () => void = () => undefined;
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const tail = previous.catch(() => undefined).then(() => current);
-    this.customRelayStructuredTails.set(key, tail);
-
-    try {
-      await previous.catch(() => undefined);
-      throwIfAborted(request.signal);
-      return await operation();
-    } finally {
-      release();
-      void tail.finally(() => {
-        if (this.customRelayStructuredTails.get(key) === tail) {
-          this.customRelayStructuredTails.delete(key);
-        }
-      });
-    }
   }
 
   private fetchResponses(config: LlmConfig, body: Record<string, unknown>, signal?: AbortSignal) {
@@ -516,7 +494,11 @@ async function assertStreamingResponse(response: Response) {
 
 function assertCompletedResponse(payload: ResponsesPayload) {
   if (payload.error?.message) throw new Error(payload.error.message);
-  if (payload.status === "failed" || payload.status === "cancelled") {
+  if (
+    payload.status === "failed" ||
+    payload.status === "cancelled" ||
+    payload.status === "incomplete"
+  ) {
     throw new Error(`Responses API 返回状态：${payload.status}`);
   }
 }
@@ -559,15 +541,53 @@ function parseResponsesEvents(block: string) {
   return events;
 }
 
-function customRelayQueueKey(config: LlmConfig) {
-  if (!config.baseUrl) return undefined;
+function isCustomResponsesRelay(config: LlmConfig) {
+  if (!config.baseUrl) return false;
   try {
     const url = new URL(config.baseUrl);
-    if (url.hostname.toLowerCase() === "api.openai.com") return undefined;
-    return `${url.origin}${url.pathname.replace(/\/+$/, "")}|${config.model}`;
+    return url.hostname.toLowerCase() !== "api.openai.com";
   } catch {
-    return `${config.baseUrl}|${config.model}`;
+    return true;
   }
+}
+
+function buildStrictResponsesInstructions(system: string) {
+  return [
+    system,
+    "严格遵循响应格式中提供的 JSON Schema。",
+    "只返回符合该 Schema 的 JSON 对象，不要包含 Markdown、代码块、解释性前后缀或额外文本。",
+    "缺失信息请用空数组、空字符串或保守的安全提示补足，不要省略字段。",
+  ].join("\n");
+}
+
+async function readStructuredResponse(response: Response, streamed: boolean) {
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  if (!streamed || !contentType.includes("text/event-stream")) {
+    const payload = (await response.json()) as ResponsesPayload;
+    return { payload, rawText: extractResponsesText(payload) };
+  }
+
+  let payload: ResponsesPayload | undefined;
+  let rawText = "";
+  for await (const event of readResponsesStream(response)) {
+    if (event.type === "response.output_text.delta" && event.delta) {
+      rawText += event.delta;
+    }
+    if (event.type === "response.output_text.done" && !rawText && event.text) {
+      rawText = event.text;
+    }
+    if (event.type === "response.completed" && event.response) {
+      payload = event.response;
+    }
+    if (event.type === "error" || event.type === "response.failed") {
+      throw new Error(
+        event.error?.message || event.response?.error?.message || "Responses API 请求失败",
+      );
+    }
+  }
+
+  if (!payload) throw new Error("Responses API 流结束时没有 completed 响应");
+  return { payload, rawText: rawText || extractResponsesText(payload) };
 }
 
 function toStrictJsonSchema(value: unknown): unknown {

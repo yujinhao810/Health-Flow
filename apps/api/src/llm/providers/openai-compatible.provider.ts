@@ -722,7 +722,7 @@ function safeJsonMessage(body: string) {
 export function formatUnknownError(error: unknown) {
   if (error instanceof Error) {
     if (error.name === "AbortError" || error.name === "TimeoutError") {
-      return "连接超时：后端在 15 秒内没有连上模型服务，请检查网络、代理或 Base URL。";
+      return "请求超时：模型服务未在允许时间内完成响应，请稍后重试或检查中转站负载。";
     }
 
     const cause = (error as Error & { cause?: unknown }).cause;
