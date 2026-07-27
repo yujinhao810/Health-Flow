@@ -60,9 +60,9 @@ import {
 const DISCLAIMER =
   "本建议仅用于健康辅助分诊与调理参考，不能替代医生诊断、治疗或急救服务。若症状严重、进展迅速或你感到不安全，请立即联系当地急救服务或线下医疗机构。";
 const PIPELINE_VERSION = "integrative-diagnosis-v3-langgraph";
-const FOLLOW_UP_GENERATION_TIMEOUT_MS = 20_000;
+const FOLLOW_UP_GENERATION_TIMEOUT_MS = 60_000;
 const FOLLOW_UP_MAX_OUTPUT_TOKENS = 900;
-const INITIAL_ASSESSMENT_TIMEOUT_MS = 90_000;
+const INITIAL_ASSESSMENT_TIMEOUT_MS = 180_000;
 const INITIAL_ASSESSMENT_MAX_OUTPUT_TOKENS = 3_000;
 const CROSS_EXAMINATION_TIMEOUT_MS = 90_000;
 const CROSS_EXAMINATION_MAX_OUTPUT_TOKENS = 1_400;

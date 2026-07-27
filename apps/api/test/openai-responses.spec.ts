@@ -24,10 +24,20 @@ test('Responses validation checks response content instead of accepting any HTTP
         },
       ],
     }),
+    jsonResponse({
+      status: 'completed',
+      output: [
+        {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: '{"ok":true}' }],
+        },
+      ],
+    }),
   ]);
   assert.deepEqual(await valid.validate(config), {
     valid: true,
-    message: 'Responses API 连接验证成功',
+    message: 'Responses API 连接及结构化输出验证成功',
   });
   assert.equal(valid.requests[0]?.path, '/responses');
   assert.equal(valid.requests[0]?.body.model, 'gpt-test');
@@ -37,6 +47,43 @@ test('Responses validation checks response content instead of accepting any HTTP
     valid: false,
     message: '连接成功，但返回内容不是有效的 Responses API 响应',
   });
+});
+
+test('Qwen Responses validation disables thinking', async () => {
+  const provider = new StubResponsesProvider([
+    jsonResponse({
+      status: 'completed',
+      output: [
+        {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'pong' }],
+        },
+      ],
+    }),
+    jsonResponse({
+      status: 'completed',
+      output: [
+        {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: '{"ok":true}' }],
+        },
+      ],
+    }),
+  ]);
+
+  const result = await provider.validate({
+    ...config,
+    provider: 'qwen',
+    model: 'qwen3-max',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(provider.requests[0]?.body.enable_thinking, false);
+  assert.equal(provider.requests[1]?.body.enable_thinking, false);
+  assert.equal((provider.requests[1]?.body.text as { format?: { type?: string } }).format?.type, 'json_object');
 });
 
 test('Responses text stream emits deltas, usage and a complete answer', async () => {
@@ -213,6 +260,44 @@ test('Responses structured output reads output_text JSON', async () => {
   assert.deepEqual(sentSchema?.required, ['ok', 'note', 'details']);
   assert.deepEqual(sentSchema?.properties?.details?.required, ['value', 'source']);
   assert.equal(sentSchema?.properties?.details?.additionalProperties, false);
+});
+
+test('Qwen Responses structured output disables thinking and prefers JSON object mode', async () => {
+  const provider = new StubResponsesProvider([
+    jsonResponse({
+      status: 'completed',
+      output: [
+        {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: '{"ok":true}' }],
+        },
+      ],
+    }),
+  ]);
+
+  const result = await provider.generateStructured<{ ok: boolean }>({
+    config: {
+      ...config,
+      provider: 'qwen',
+      model: 'qwen3-max',
+      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    },
+    system: 'Return JSON',
+    messages: [{ role: 'user', content: 'status' }],
+    schemaName: 'qwen_status_result',
+    schema: {
+      type: 'object',
+      properties: { ok: { type: 'boolean' } },
+      required: ['ok'],
+      additionalProperties: false,
+    },
+  });
+
+  assert.deepEqual(result.parsed, { ok: true });
+  assert.equal(provider.requests[0]?.body.enable_thinking, false);
+  assert.equal(provider.requests[0]?.body.stream, true);
+  assert.equal((provider.requests[0]?.body.text as { format?: { type?: string } }).format?.type, 'json_object');
 });
 
 test('Responses structured output retries a transient gateway failure with the same format', async () => {

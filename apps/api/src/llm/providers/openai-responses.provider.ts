@@ -92,6 +92,7 @@ export class OpenAiResponsesProvider extends OpenAiCompatibleProvider {
           stream: false,
           store: false,
           max_output_tokens: 64,
+          ...responsesProviderOptions(config),
         },
         AbortSignal.timeout(15000),
       );
@@ -109,7 +110,22 @@ export class OpenAiResponsesProvider extends OpenAiCompatibleProvider {
         };
       }
 
-      return { valid: true, message: "Responses API 连接验证成功" };
+      await this.generateStructured({
+        config,
+        system: "Return the requested JSON object.",
+        schemaName: "connection_validation",
+        schema: {
+          type: "object",
+          properties: { ok: { type: "boolean" } },
+          required: ["ok"],
+          additionalProperties: false,
+        },
+        messages: [{ role: "user", content: '{"ok":true}' }],
+        maxOutputTokens: 128,
+        signal: AbortSignal.timeout(30000),
+      });
+
+      return { valid: true, message: "Responses API 连接及结构化输出验证成功" };
     } catch (error) {
       return { valid: false, message: formatUnknownError(error) };
     }
@@ -245,26 +261,28 @@ export class OpenAiResponsesProvider extends OpenAiCompatibleProvider {
     const strictSchema = toStrictJsonSchema(request.schema);
     const fallbackInstructions = buildStructuredSystemPrompt(request.system, strictSchema);
     const stream = isCustomResponsesRelay(request.config);
-    const formats = [
-      {
-        body: {
-          text: {
-            format: {
-              type: "json_schema",
-              name: request.schemaName,
-              strict: true,
-              schema: strictSchema,
-            },
+    const jsonSchemaFormat = {
+      body: {
+        text: {
+          format: {
+            type: "json_schema",
+            name: request.schemaName,
+            strict: true,
+            schema: strictSchema,
           },
         },
-        instructions: buildStrictResponsesInstructions(request.system),
       },
-      {
-        body: { text: { format: { type: "json_object" } } },
-        instructions: fallbackInstructions,
-      },
-      { body: {}, instructions: fallbackInstructions },
-    ];
+      instructions: buildStrictResponsesInstructions(request.system),
+    };
+    const jsonObjectFormat = {
+      body: { text: { format: { type: "json_object" } } },
+      instructions: fallbackInstructions,
+    };
+    const promptOnlyFormat = { body: {}, instructions: fallbackInstructions };
+    const formats =
+      request.config.provider === "qwen"
+        ? [jsonObjectFormat, jsonSchemaFormat, promptOnlyFormat]
+        : [jsonSchemaFormat, jsonObjectFormat, promptOnlyFormat];
     const errors: string[] = [];
     const maxTokenAttempts = structuredMaxTokenAttempts(request.config.provider, request.maxOutputTokens);
 
@@ -282,6 +300,7 @@ export class OpenAiResponsesProvider extends OpenAiCompatibleProvider {
                 instructions: format.instructions,
                 input: toResponsesInput(request.messages),
                 max_output_tokens: maxTokenAttempts[index],
+                ...responsesProviderOptions(request.config),
                 ...format.body,
               },
               request.signal,
@@ -549,6 +568,12 @@ function isCustomResponsesRelay(config: LlmConfig) {
   } catch {
     return true;
   }
+}
+
+function responsesProviderOptions(config: LlmConfig) {
+  // Qwen reasoning models can consume the complete structured-output budget
+  // before emitting JSON. DashScope accepts this Responses API extension.
+  return config.provider === "qwen" ? { enable_thinking: false } : {};
 }
 
 function buildStrictResponsesInstructions(system: string) {
